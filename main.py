@@ -9,6 +9,12 @@ main.py: Watchtower incident tick loop.
 Add --crew to any mode to decide with the CrewAI swarm instead of the plain rule.
   python main.py --crew                     # swarm on fixtures, nothing submitted
   python main.py --crew --submit-fixtures   # swarm on fixture ticks, submit to LIVE scoreboard
+
+Alerts go to Discord (webhook) only on real submissions (--live or --submit-fixtures).
+  --no-discord     skip alerts
+  --send-alerts    also alert in fixture/dry runs (for testing)
+  --test-discord   send one test message and exit
+Failed posts are printed and saved to manual_alerts.txt for posting by hand.
 """
 import asyncio
 import json
@@ -25,8 +31,38 @@ except Exception:
     def emit(event):  # noqa: E306
         pass
 
+# Discord dispatch via webhook (organizers switched from One to a direct webhook)
+try:
+    from src.tools.discord_webhook import post_alert
+    _DISPATCH_IMPORT_ERROR = ""
+except Exception as _e:
+    _DISPATCH_IMPORT_ERROR = f"{type(_e).__name__}: {_e}"
+
+    async def post_alert(content: str) -> bool:  # noqa: E306
+        return False
+
 USE_CREW = "--crew" in sys.argv
+SEND_ALERTS = "--no-discord" not in sys.argv
+SEND_ALERTS_ALWAYS = "--send-alerts" in sys.argv   # also alert in fixture/dry runs (testing)
+MANUAL_ALERTS = "manual_alerts.txt"
 METRICS = Metrics()
+
+
+async def send_alert(tick_id, alert: str) -> bool:
+    """Post an alert via the Discord webhook; on failure, fall back to manual posting."""
+    if _DISPATCH_IMPORT_ERROR:
+        print(f"  dispatcher not available ({_DISPATCH_IMPORT_ERROR})")
+    ok = await post_alert(alert)
+    ui({"type": "dispatch", "tick_id": tick_id, "content": alert, "ok": ok, "manual": not ok})
+    if ok:
+        print("  DISCORD: posted to #loft-incident")
+        return True
+    with open(MANUAL_ALERTS, "a") as f:
+        f.write(alert + "\n")
+    bar = "!" * 70
+    print(f"  {bar}\n  MANUAL FALLBACK: post this in #loft-incident now (saved to {MANUAL_ALERTS}):\n"
+          f"  {alert}\n  {bar}")
+    return False
 
 
 def ui(event: dict):
@@ -62,7 +98,7 @@ def print_tick(tick: dict, decision: dict):
     if decision.get("searches"):
         print(f"  You.com searches: {decision['searches']}  sources: {decision.get('lore_sources', [])[:3]}")
     if decision.get("alert"):
-        print(f"  ALERT (Discord, not sent yet): {decision['alert']}")
+        print(f"  ALERT: {decision['alert']}")
 
 
 def print_judgment(j: dict):
@@ -102,6 +138,12 @@ async def run_scenario(feed, scenario: str, dry_run: bool, submit_feed=None):
         print_judgment(judgment)
         print(f"  latency {time.perf_counter() - t0:.2f}s")
 
+        # Discord escalation AFTER submitting (never slows the scoreboard update);
+        # only when the two-key check produced an alert, and only on real submissions
+        if decision.get("alert") and SEND_ALERTS and (not dry_run or SEND_ALERTS_ALWAYS):
+            if await send_alert(tick_id, decision["alert"]):
+                METRICS.add_one_action(1)
+
         if "score" in judgment:
             ui({"type": "score", "tick_id": tick_id, "expected_action": judgment.get("expected_action"),
                 "score": judgment.get("score"), "false_alarm": judgment.get("false_alarm")})
@@ -134,6 +176,12 @@ async def replay(feed):
 async def main():
     live = "--live" in sys.argv or "--replay" in sys.argv
     dry_run = "--dry-run" in sys.argv
+
+    if "--test-discord" in sys.argv:
+        import os
+        ok = await post_alert(f"{os.environ.get('TEAM_HANDLE', 'team-xx')} · test · Ghost Ops swarm online")
+        print("Discord test:", "posted" if ok else "failed")
+        return
 
     if "--submit-fixtures" in sys.argv:  # live ticks == fixtures; cursor already exhausted
         print("Fixture ticks -> LIVE scoreboard. Each tick counts once!")
