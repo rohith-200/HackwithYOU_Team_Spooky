@@ -42,6 +42,14 @@ class EventServerTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"ok": True, "clients": 0})
 
+    def test_local_modules_and_vendor_assets_are_served(self):
+        for asset in ("state.js", "scene.js", "demo.js", "style.css", "vendor/three/three.module.min.js", "vendor/three/three.core.js"):
+            with self.subTest(asset=asset):
+                response = self.client.get("/assets/" + asset)
+                self.assertEqual(response.status_code, 200)
+                self.assertTrue(response.content)
+        self.assertEqual(self.client.get("/assets/../server.py").status_code, 404)
+
     def test_two_browsers_receive_all_mock_events_unchanged_in_order(self):
         with self.client.websocket_connect("/ws") as first, self.client.websocket_connect("/ws") as second:
             for event in sample_events():

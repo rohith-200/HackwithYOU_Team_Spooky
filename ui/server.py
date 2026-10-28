@@ -10,6 +10,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 
 UI_DIRECTORY = Path(__file__).resolve().parent
@@ -69,6 +70,7 @@ def create_app() -> FastAPI:
     application = FastAPI(title="Ghost Ops event bridge")
     hub = EventHub()
     application.state.hub = hub
+    application.mount("/assets", StaticFiles(directory=UI_DIRECTORY / "assets"), name="assets")
 
     @application.get("/", include_in_schema=False)
     async def index() -> FileResponse:

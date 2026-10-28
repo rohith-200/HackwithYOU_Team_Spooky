@@ -1,0 +1,2 @@
+three@0.186.1 - https://github.com/mrdoob/three.js - MIT license
+three.core.js contains the package three.core.min.js build, named for the module import.
