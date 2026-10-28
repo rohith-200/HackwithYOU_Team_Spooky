@@ -34,7 +34,7 @@ class EventServerTests(unittest.TestCase):
             finally:
                 os.chdir(original_directory)
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Ghost Ops", response.text)
+        self.assertIn("Watchtower", response.text)
         self.assertIn("new WebSocket", response.text)
 
     def test_emit_acknowledges_events_without_browsers(self):

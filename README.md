@@ -1,9 +1,9 @@
-# 👻 Ghost Ops — Team Spooky
+# Watchtower — Team Spooky
 
 **Hack with YOU: Halloween Edition · Track 1: The Exorcism Protocol**
 AWS Builder Loft, San Francisco · October 28, 2026
 
-Ghost Ops is a supervised AI agent swarm that contains a paranormal outbreak in a live facility simulation. For every incident tick it triages each sector, sends a team of agents with **partial knowledge** to analyze it, decides **contain / evacuate / observe**, submits the decision to the scenario scoreboard, raises a Discord alert only when two agents agree it is serious, and records tokens, cost and latency for every tick.
+Watchtower is a supervised AI incident response platform for a live facility simulation. For every incident tick it triages each sector, sends a team of agents with **partial knowledge** to analyze it, decides **contain / evacuate / observe**, submits the decision to the scenario scoreboard, raises a Discord alert only when two agents agree it is serious, and records tokens, cost and latency for every tick.
 
 Built with **CrewAI** · **Parasail** · **You.com** · **One** · venue by AWS
 
@@ -43,7 +43,7 @@ flowchart TD
 
 ## How each partner is used
 
-| Partner | Role in Ghost Ops |
+| Partner | Role in Watchtower |
 |---|---|
 | **CrewAI** | The swarm: a Flow with a router (`triage → hot/calm → finalize`), 5 role-based agents, parallel tasks, structured Pydantic outputs |
 | **Parasail** | Every agent's model (three models split by job), schema-locked JSON for the backup Commander, and embeddings for sector triage |

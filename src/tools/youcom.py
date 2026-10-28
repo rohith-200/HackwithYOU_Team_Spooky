@@ -1,4 +1,4 @@
-"""Small, cited You.com grounding tools for Ghost Ops."""
+"""Small, cited You.com grounding tools for Watchtower."""
 
 from __future__ import annotations
 

@@ -67,7 +67,7 @@ async def wait_for_disconnect(socket: WebSocket) -> None:
 
 
 def create_app() -> FastAPI:
-    application = FastAPI(title="Ghost Ops event bridge")
+    application = FastAPI(title="Watchtower event bridge")
     hub = EventHub()
     application.state.hub = hub
     application.mount("/assets", StaticFiles(directory=UI_DIRECTORY / "assets"), name="assets")
@@ -120,7 +120,7 @@ app = create_app()
 if __name__ == "__main__":
     import uvicorn
 
-    parser = argparse.ArgumentParser(description="Run the Ghost Ops C2 event bridge.")
+    parser = argparse.ArgumentParser(description="Run the Watchtower C2 event bridge.")
     parser.add_argument("--host", default="localhost")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()

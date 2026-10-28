@@ -1,5 +1,5 @@
 """
-crew.py: the Ghost Ops swarm (A3).
+crew.py: the Watchtower incident response swarm (A3).
 
 Flow:  triage -> router -> hot crew (5 agents) | calm crew (3 agents) -> finalize
 Each agent sees only its slice of the tick (partial knowledge).
@@ -332,7 +332,7 @@ def _usage(result, crew=None) -> dict:
 
 
 # ---------- the flow ----------
-class GhostOpsFlow(Flow):
+class WatchtowerFlow(Flow):
 
     @start()
     def triage(self):
@@ -482,7 +482,7 @@ async def run_tick(tick: dict) -> dict:
             if attempt == 2:
                 for role in AGENT_MODELS:
                     AGENT_MODELS[role] = fallback
-            flow = GhostOpsFlow()
+            flow = WatchtowerFlow()
             decision = await asyncio.wait_for(flow.kickoff_async(inputs={"tick": tick}),
                                               timeout=TICK_TIMEOUT_S)
             if attempt == 2:

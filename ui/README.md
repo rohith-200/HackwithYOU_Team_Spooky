@@ -1,4 +1,4 @@
-# Ghost Ops command center
+# Watchtower incident command
 
 Person C's C3 interface turns the C2 event stream into an interactive 3D incident board. The layout is a schematic, not an architectural floor plan of AWS Builder Loft. It follows the `pic3.jpeg` palette: purple Main Stage, teal Entrance, and dark-blue Catering Coffee Bar, with the other map regions retaining their reference colors. The Main Stage, screens, and seating sit along the entrance-side strip, with a low open wall for depth. Backend sectors outside those three areas remain in mission state and can still supply decisions and scores, but do not create rooms, highlights, or camera focus. Mapped rooms absent from a later tick show **Not updated**, rather than being declared safe.
 
