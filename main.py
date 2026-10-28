@@ -5,6 +5,10 @@ main.py: Ghost Ops tick loop.
   python main.py --live           # live feed, submits every tick (counts!)
   python main.py --live --dry-run # live ticks, decisions queued, not submitted
   python main.py --replay         # submit everything queued in pending_submissions.jsonl
+
+Add --crew to any mode to decide with the CrewAI swarm instead of the plain rule.
+  python main.py --crew                     # swarm on fixtures, nothing submitted
+  python main.py --crew --submit-fixtures   # swarm on fixture ticks, submit to LIVE scoreboard
 """
 import asyncio
 import json
@@ -13,6 +17,17 @@ import time
 
 from src.feed import QUEUE_FILE, SCENARIOS, FixtureFeed, LiveFeed
 from src.rules import decide
+
+USE_CREW = "--crew" in sys.argv
+
+
+async def decide_tick(tick: dict) -> dict:
+    if USE_CREW:
+        from src.crew import run_tick
+        return await run_tick(tick)
+    d = decide(tick)
+    d["source"] = "rule"
+    return d
 
 MAX_TICKS_PER_SCENARIO = 200
 
@@ -24,6 +39,10 @@ def print_tick(tick: dict, decision: dict):
         people = "civilians at risk" if a["civilians_at_risk"] else "no civilians at risk"
         print(f"  {flag} {a['sector']:<24} threat={a['threat']}  {people}")
     print(f"  DECISION: {decision['action'].upper()}  ({decision['rationale']})")
+    print(f"  source: {decision.get('source', 'rule')}  agents: {decision.get('agents_used', 0)}"
+          f"  tokens: {sum(decision.get('usage', {}).get(k, 0) for k in ('prompt_tokens', 'completion_tokens'))}")
+    if decision.get("alert"):
+        print(f"  ALERT (Discord, not sent yet): {decision['alert']}")
 
 
 def print_judgment(j: dict):
@@ -35,7 +54,7 @@ def print_judgment(j: dict):
           f"false_alarm={j.get('false_alarm')}{dup}")
 
 
-async def run_scenario(feed, scenario: str, dry_run: bool):
+async def run_scenario(feed, scenario: str, dry_run: bool, submit_feed=None):
     print(f"\n===== scenario: {scenario} =====")
     seen = set()
     for _ in range(MAX_TICKS_PER_SCENARIO):
@@ -46,7 +65,7 @@ async def run_scenario(feed, scenario: str, dry_run: bool):
         seen.add(tick_id)
 
         t0 = time.perf_counter()
-        decision = decide(tick)
+        decision = await decide_tick(tick)
         print_tick(tick, decision)
 
         if dry_run:
@@ -54,7 +73,7 @@ async def run_scenario(feed, scenario: str, dry_run: bool):
                 f.write(json.dumps({"tick_id": tick_id, "action": decision["action"]}) + "\n")
             judgment = {"queued": True}
         else:
-            judgment = await feed.submit(tick_id, decision["action"])
+            judgment = await (submit_feed or feed).submit(tick_id, decision["action"])
         print_judgment(judgment)
         print(f"  latency {time.perf_counter() - t0:.2f}s")
 
@@ -76,6 +95,15 @@ async def replay(feed):
 async def main():
     live = "--live" in sys.argv or "--replay" in sys.argv
     dry_run = "--dry-run" in sys.argv
+
+    if "--submit-fixtures" in sys.argv:  # live ticks == fixtures; cursor already exhausted
+        print("Fixture ticks -> LIVE scoreboard. Each tick counts once!")
+        async with LiveFeed() as live_feed, FixtureFeed() as fx:
+            for scenario in SCENARIOS:
+                await run_scenario(fx, scenario, dry_run=False, submit_feed=live_feed)
+            print("\n===== scoreboard =====")
+            print(json.dumps(await live_feed.scoreboard(), indent=2))
+        return
 
     if not live:
         print("Fixture mode (nothing is submitted). Use --live for the real feed.")
