@@ -2,131 +2,107 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark light">
-  <link rel="icon" href="data:,">
-  <title>Ghost Ops - Event Monitor</title>
-  <style>
-    :root { color-scheme: dark; font-family: ui-monospace, Consolas, monospace; background: #101319; color: #e1e8ef; }
-    * { box-sizing: border-box; }
-    body { max-width: 1120px; margin: auto; padding: 28px 20px; }
-    header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
-    h1 { font-size: 1.4rem; margin: 0; }
-    p { color: #b6c2d0; line-height: 1.6; }
-    #connection { display: inline-flex; align-items: center; gap: 8px; }
-    #connection::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: #ffb454; }
-    #connection[data-connected="true"]::before { background: #7cffb2; }
-    .summary { display: flex; flex-wrap: wrap; gap: 14px 28px; margin: 24px 0; color: #b6c2d0; }
-    .summary strong { color: #e1e8ef; }
-    #empty { padding: 36px 0; }
-    ol { padding: 0; list-style: none; }
-    li { padding: 16px 0; border-top: 1px solid #303944; }
-    .event-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 16px; }
-    .event-type { color: #7cffb2; }
-    .event-meta { color: #b6c2d0; font-size: 0.85rem; }
-    pre { color: #d2dce6; font: inherit; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; margin: 12px 0 0; }
-    code { color: #c7b9ff; overflow-wrap: anywhere; }
-    button { font: inherit; color: inherit; background: #202731; border: 1px solid #485463; border-radius: 6px; padding: 8px 12px; }
-    button:focus-visible { outline: 2px solid #7cffb2; outline-offset: 3px; }
-    .controls { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
-    @media (max-width: 480px) { body { padding: 20px 14px; } h1 { font-size: 1.2rem; } }
-  </style>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0d0911">
+  <title>Watchtower — Incident Command</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script type="importmap">{"imports":{"three":"/assets/vendor/three/three.module.min.js"}}</script>
 </head>
 <body>
-  <header>
-    <h1>Ghost Ops / Event Monitor</h1>
-    <span id="connection" role="status" aria-live="polite" data-connected="false">Connecting...</span>
-  </header>
-  <p>C2 connection check. Incoming events appear below and in the browser console. Mock replay data, including scores and delivery statuses, is simulated.</p>
-  <div class="summary">
-    <span>Received <strong id="received">0</strong></span>
-    <span>Latest tick <strong id="tick">—</strong></span>
-    <span>Showing the latest 50 events</span>
+  <div class="shell">
+    <header>
+      <div class="brand"><svg class="brand-mark" viewBox="0 0 44 48" fill="none" aria-hidden="true"><path d="M18 5a6 6 0 0 1 8 0M14 2a12 12 0 0 1 16 0M10 15h24l-3-7H13l-3 7Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 17h30v3H7zM12 20l3 22h14l3-22M10 43h24v3H10z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M17 25h10v8H17zM19 27h6v4h-6z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><div class="brand-name">WATCHTOWER<small>INCIDENT COMMAND PLATFORM</small></div></div>
+      <div class="header-tools"><div class="source-switch" aria-label="Data source"><button id="demo-source" aria-pressed="true">Simulation</button><button id="live-source" aria-pressed="false">Backend</button></div><span class="bridge"><i class="dot" id="bridge-dot"></i><span id="bridge-status">BRIDGE CONNECTING</span></span><button class="small-button" id="sound" aria-pressed="false" title="Toggle local interface sounds">SOUND OFF</button></div>
+    </header>
+    <div class="mission-head"><div><div class="eyebrow"><span class="index">OP / 01</span>THE LOFT INCIDENTS</div><h1>Something is in the building.</h1><p class="mission-description">Read the signals. Command the swarm. Make the right call.</p></div><div class="mission-meta"><div class="meta"><span class="eyebrow">FACILITY</span><span class="meta-value" id="facility">—</span></div><div class="meta"><span class="eyebrow">TICK</span><span class="meta-value" id="tick">—</span></div><span class="tag warning" id="source-tag">SIMULATION</span></div></div>
+    <div class="source-note"><div><strong id="source-note-title">TRAINING SIMULATION</strong><span id="source-note-text">Fictional replay. Scores, agent reports, and dispatches are simulated locally.</span></div><button class="quick-run" id="quick-run">RUN SIMULATION ↗</button><span id="stream-count">BACKEND · 0 EVENTS</span></div>
+    <main class="workspace">
+      <aside class="sidebar" aria-label="Sector intelligence">
+        <section class="panel"><div class="panel-title">SECTOR DIRECTORY <span class="subtle" id="sector-count">00 ZONES</span></div><div class="sector-list" id="sector-list"></div></section>
+        <section class="panel"><div class="panel-title">SECTOR INTEL <span class="subtle">TELEMETRY</span></div><div class="intel-head"><h2 id="intel-name">Select a sector</h2><span class="tag" id="intel-status">—</span></div><div class="readings"><div class="reading"><span>EMF · mG</span><b id="emf">—</b></div><div class="reading"><span>TEMPERATURE</span><b id="temp">—</b></div><div class="reading"><span>MOTION EVENTS</span><b id="motion">—</b></div><div class="reading"><span>CONFIDENCE</span><b id="confidence">—</b></div></div><dl class="intel-details"><div><dt>Entity</dt><dd id="entity">—</dd></div><div><dt>Civilians</dt><dd id="civilians">—</dd></div><div><dt>Containment</dt><dd id="containment">—</dd></div></dl><p class="status-note" id="stale-note" hidden>Not updated this tick. Showing the last reported readings.</p></section>
+        <section class="panel"><div class="panel-title">MISSION RECORD <span class="subtle" id="score-source">SIMULATED</span></div><div class="score-summary"><div><b id="average">—</b><span>AVG SCORE</span></div><div><b id="scored">0</b><span>EVALUATED</span></div><div><b id="false-alarms">0</b><span>FALSE ALARMS</span></div></div></section>
+      </aside>
+      <section class="center" aria-label="Tactical board">
+        <div class="board"><div class="board-top"><div class="board-id">TACTICAL SECTOR BOARD<small>SCHEMATIC LAYOUT · NOT A VENUE FLOORPLAN</small></div><div class="board-tag"><i class="dot online"></i><span id="board-mode">LOCAL SIMULATION</span></div></div><div id="scene"></div><div class="board-controls" aria-label="Camera controls"><button id="iso" aria-pressed="true" title="Isometric view">ISO</button><button id="top" aria-pressed="false" title="Top view">TOP</button><button id="zoom-in" class="zoom" aria-label="Zoom in">+</button><button id="zoom-out" class="zoom" aria-label="Zoom out">−</button><button id="focus" title="Focus selected sector" aria-label="Focus selected sector">◎</button><button id="overview" title="Show all sectors" aria-label="Show all sectors">⤢</button></div><div class="compass" aria-hidden="true">N</div><div class="board-bottom"><div class="legend"><span><i style="--legend-color:var(--orange)"></i>BREACH</span><span><i style="--legend-color:var(--amber)"></i>ANOMALY</span><span><i style="--legend-color:var(--lime)"></i>HOLDING</span><span><i style="--legend-color:var(--violet)"></i>UNKNOWN</span></div><div class="camera-hint">DRAG TO ORBIT / SCROLL TO ZOOM<br>SELECT A SECTOR TO INSPECT</div></div></div>
+        <div class="mission-line"><div class="eyebrow">MISSION FLOW</div><div class="phase-steps" aria-hidden="true"><i class="phase-step"></i><i class="phase-step"></i><i class="phase-step"></i><i class="phase-step"></i></div><span class="phase-label" id="phase">READY</span></div>
+        <div class="panel verdict" id="verdict" aria-live="polite"><div class="verdict-icon" id="verdict-icon">?</div><div class="verdict-copy"><div class="eyebrow" id="verdict-eyebrow">COMMANDER'S DECISION</div><h2 id="action">Awaiting assessment</h2><p id="rationale">Run a simulation to watch the agent team investigate.</p><p id="score-detail" hidden></p></div><div class="verdict-result"><span id="result">—</span><small id="result-label">SCORE / 1</small></div></div>
+      </section>
+      <aside class="rightbar" aria-label="Agent activity">
+        <section class="panel"><div class="panel-title">THE SWARM <span class="subtle" id="agent-budget">0 / — USED</span></div><div class="agent-list" id="agent-list"></div></section>
+        <section class="panel log-panel"><div class="panel-title">MISSION COMMS <span class="subtle" id="log-count">0 REPORTS</span></div><div class="event-log" id="event-log" aria-label="Agent reports"></div></section>
+        <section class="panel dispatch-panel"><div class="dispatch-heading"><span><span class="dispatch-icon">▣</span> DISCORD DISPATCH</span><span class="tag warning" id="dispatch-status">STANDBY</span></div><p id="dispatch-content">A report appears here when the dispatcher emits a result.</p></section>
+      </aside>
+    </main>
+    <section class="bottom-strip" aria-label="Mission controls and metrics">
+      <div class="panel run-panel"><label class="sr-only" for="scenario">Simulation scenario</label><select id="scenario"><option value="breach">01 / The coffee bar breach</option><option value="control">02 / A crowd, not a ghost</option><option value="unknown">03 / An uncharted sector</option></select><button class="run-button" id="run"><span id="run-label">RUN SIMULATION</span><span id="run-icon" aria-hidden="true">↗</span></button><p class="run-hint" id="run-hint">A local replay. No API keys required.</p></div>
+      <div class="panel telemetry"><div class="metric"><span>TOKENS</span><b id="tokens">—</b><small id="metric-source">SIMULATED USAGE</small></div><div class="metric"><span>RUN COST</span><b id="cost">—</b><small>USD</small></div><div class="metric"><span>LATENCY</span><b id="latency">—</b><small>SECONDS</small></div><div class="metric"><span>AGENT BUDGET</span><b id="agents-used">— / —</b><small id="credits">— CREDITS LEFT</small></div></div>
+      <div class="panel operation-note"><span class="note-symbol">01</span><p><strong>Three areas are mapped.</strong><br>Other sector data remains in mission results without map highlights.</p></div>
+    </section>
+    <footer><div class="stack">TEAM STACK <span>CrewAI</span><span>Parasail</span><span>You.com</span><span>One</span></div><div class="footer-note"><span>HACK WITH YOU / HALLOWEEN</span><span id="renderer-label">INITIALIZING SCENE</span><button class="small-button" id="motion-toggle" aria-pressed="true">MOTION ON</button></div><span>WATCHTOWER © 2026</span></footer>
+    <div class="sr-only" role="status" id="announcement"></div>
   </div>
-  <div class="controls">
-    <button id="clear" type="button">Clear display</button>
-    <span id="mode">Waiting for events</span>
-  </div>
-  <p id="empty">Start the mock replay to check the connection. Its incident data and scores are simulated.</p>
-  <ol id="events" aria-label="Received events, newest first"></ol>
-  <script>
-    (() => {
-      const connection = document.getElementById('connection');
-      const received = document.getElementById('received');
-      const tick = document.getElementById('tick');
-      const mode = document.getElementById('mode');
-      const empty = document.getElementById('empty');
-      const events = document.getElementById('events');
-      let total = 0;
-      let socket;
-      let reconnectTimer;
-      let stopped = false;
-
-      function showEvent(data) {
-        console.log('[Ghost Ops event]', data);
-        total += 1;
-        received.textContent = String(total);
-        tick.textContent = data.tick_id ?? '—';
-        const item = document.createElement('li');
-        const heading = document.createElement('div');
-        heading.className = 'event-heading';
-        const type = document.createElement('strong');
-        type.className = 'event-type';
-        type.textContent = data.type ?? 'unknown event';
-        const metadata = document.createElement('span');
-        metadata.className = 'event-meta';
-        metadata.textContent = `Tick ${data.tick_id ?? '—'} · ${new Date().toLocaleTimeString()}`;
-        const payload = document.createElement('pre');
-        payload.textContent = JSON.stringify(data, null, 2);
-        heading.append(type, metadata);
-        item.append(heading, payload);
-        events.prepend(item);
-        while (events.children.length > 50) events.lastElementChild.remove();
-        empty.hidden = true;
-        mode.textContent = 'Receiving event stream';
-      }
-
-      function connect() {
-        if (stopped) return;
-        clearTimeout(reconnectTimer);
-        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        socket = new WebSocket(`${protocol}//${location.host}/ws`);
-        socket.onopen = () => {
-          connection.dataset.connected = 'true';
-          connection.textContent = 'Connected';
-        };
-        socket.onmessage = event => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data && typeof data === 'object' && !Array.isArray(data)) showEvent(data);
-          } catch (error) { console.warn('[Ghost Ops] Invalid event', error); }
-        };
-        socket.onerror = () => socket.close();
-        socket.onclose = () => {
-          connection.dataset.connected = 'false';
-          connection.textContent = 'Disconnected · retrying in 2s';
-          if (!stopped) reconnectTimer = setTimeout(connect, 2000);
-        };
-      }
-
-      document.getElementById('clear').addEventListener('click', () => {
-        events.replaceChildren();
-        total = 0;
-        received.textContent = '0';
-        tick.textContent = '—';
-        mode.textContent = 'Waiting for events';
-        empty.hidden = false;
-      });
-      window.addEventListener('pagehide', () => {
-        stopped = true;
-        clearTimeout(reconnectTimer);
-        if (socket) socket.close();
-      });
-      window.addEventListener('pageshow', event => {
-        if (event.persisted) { stopped = false; connect(); }
-      });
-      connect();
-    })();
+  <script type="module">
+    import { MissionState, mapAreaForSector } from '/assets/state.js';
+    import { SectorScene } from '/assets/scene.js';
+    import { getDemoPreview, getDemoSequence } from '/assets/demo.js';
+    const $ = id => document.getElementById(id);
+    const roles = [['sensor','01','Sensor','Signal analysis'],['lore','02','Lore','Entity intelligence'],['civilian','03','Civilian','Civilian assessment'],['commander','04','Commander','Response decision'],['dispatcher','05','Dispatcher','Incident dispatch']];
+    const colors = {breached:'#ff754b',hot:'#d9af70',secure:'#b5f18c',unknown:'#aca0ca',stale:'#718288'};
+    const statuses = {breached:'BREACH',hot:'ANOMALY',secure:'HOLDING',unknown:'UNVERIFIED',stale:'NOT UPDATED'};
+    let demoModel=new MissionState(),liveModel=new MissionState();
+    let source='demo',selected=null,running=false,generation=0,backendEvents=0,backendHasMock=false,sound=false,audio;
+    let motionEnabled=!matchMedia('(prefers-reduced-motion: reduce)').matches;
+    demoModel.ingest(getDemoPreview());
+    const scene=new SectorScene($('scene'),{onSelect(id){selected=id;render();beep(420);},onReady({webgl}){$('renderer-label').textContent=webgl?'3D SECTOR ENGINE':'INTERACTIVE 2D FALLBACK';}});
+    scene.setMotion(motionEnabled);
+    const pretty=value=>String(value??'—').replace(/[_-]+/g,' ');
+    const number=(value,digits=0)=>typeof value==='number'&&Number.isFinite(value)?value.toLocaleString('en-US',{maximumFractionDigits:digits}):'—';
+    const text=(id,value)=>{$(id).textContent=value;};
+    const snapshot=()=>(source==='demo'?demoModel:liveModel).snapshot();
+    function element(tag,className,value){const el=document.createElement(tag);if(className)el.className=className;if(value!==undefined)el.textContent=value;return el;}
+    function beep(frequency=620){if(!sound)return;try{audio??=new AudioContext();audio.resume();const o=audio.createOscillator(),g=audio.createGain();o.type='sine';o.frequency.value=frequency;g.gain.setValueAtTime(.025,audio.currentTime);g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+.12);o.connect(g).connect(audio.destination);o.start();o.stop(audio.currentTime+.13);}catch{}}
+    function roleFor(value){const name=String(value??'').toLowerCase();return roles.find(([id])=>name.includes(id))?.[0]??null;}
+    function render(){
+      const s=snapshot(),simulated=source==='demo'||s.isMock,mapRooms=s.rooms.filter(room=>mapAreaForSector(room.id));
+      if(!mapRooms.some(room=>room.id===selected))selected=mapRooms.find(r=>r.status==='breached'||r.status==='hot')?.id??mapRooms[0]?.id??null;
+      scene.update(s.rooms,selected);
+      text('facility',pretty(s.facilityId).toUpperCase());text('tick',s.tickId===null?'—':`#${s.tickId}`);
+      text('source-tag',source==='demo'?'SIMULATION':s.isMock?'MOCK STREAM':'BACKEND STREAM');
+      text('source-note-title',source==='demo'?'TRAINING SIMULATION':s.isMock?'MOCK BACKEND EVENTS':'BACKEND EVENT STREAM');
+      text('source-note-text',source==='demo'?'Fictional replay. Scores, agent reports, and dispatches are simulated locally.':s.isMock?'Received events are marked as mock data. Results are simulated.':'Showing received backend events. The scene updates when the agent loop emits.');
+      text('board-mode',source==='demo'?'LOCAL SIMULATION':s.isMock?'MOCK STREAM':'BACKEND EVENTS');text('sector-count',`${String(mapRooms.length).padStart(2,'0')} ZONES`);
+      text('score-source',source==='live'&&backendHasMock?'INCLUDES MOCK':simulated?'SIMULATED':'RECEIVED');text('metric-source',simulated?'SIMULATED USAGE':'REPORTED USAGE');
+      const list=$('sector-list');list.replaceChildren();if(!mapRooms.length)list.append(element('div','empty','No mapped sectors received. Backend decision and score data remain available.'));
+      for(const room of mapRooms){const item=element('button','sector-item');item.type='button';item.setAttribute('aria-pressed',String(room.id===selected));item.style.setProperty('--room-accent',colors[room.status]);item.title=room.id;const copy=element('span','sector-copy');copy.append(element('strong','',room.label),element('small','',statuses[room.status]));item.append(element('span','sector-code',`S${String(room.slot+1).padStart(2,'0')}`),copy,element('span','sector-pip'));item.addEventListener('click',()=>{selected=room.id;scene.select(room.id,{focus:true});render();beep(440);});list.append(item);}
+      const room=s.rooms.find(r=>r.id===selected);text('intel-name',room?.label??'Select a sector');text('intel-status',statuses[room?.status]??'NO DATA');$('intel-status').style.color=colors[room?.status]??'var(--muted)';
+      text('emf',number(room?.emf,1));text('temp',room?.temp_c==null?'—':`${number(room.temp_c,1)}°C`);text('motion',number(room?.motion));text('confidence',room?.confidence==null?'—':`${number(room.confidence*100)}%`);
+      text('entity',pretty(room?.entity_class));text('civilians',pretty(room?.civilians));text('containment',pretty(room?.containment_state));$('stale-note').hidden=room?.status!=='stale';
+      text('average',number(s.totals.averageScore,2));text('scored',number(s.totals.ticksScored));text('false-alarms',number(s.totals.falseAlarms));
+      const reported=new Set(s.logs.map(log=>roleFor(log.agent)).filter(Boolean));if(s.decision)reported.add('commander');if(s.dispatch)reported.add('dispatcher');
+      const agents=$('agent-list');agents.replaceChildren();for(const[id,code,name,description]of roles){const a=element('div',`agent ${reported.has(id)?'reported':''}`),n=element('div','agent-name',name);n.append(element('small','',description));a.append(element('span','agent-icon',code),n,element('span','agent-state',reported.has(id)?'REPORTED':'WAITING'));agents.append(a);}
+      text('agent-budget',`${number(s.metrics?.agents_used)} / ${number(s.maxAgents)} USED`);
+      const logs=$('event-log'),nearBottom=logs.scrollHeight-logs.scrollTop-logs.clientHeight<35;logs.replaceChildren();if(!s.logs.length)logs.append(element('div','empty',source==='demo'?'The channel is quiet. Run a simulation to begin the investigation.':'Waiting for agent reports from the backend.'));
+      for(const log of s.logs){const row=element('div','log-entry'),meta=element('div','log-meta',pretty(log.agent));meta.append(element('small','',log.sector?pretty(log.sector):'COMMAND'));row.append(meta,element('p','',log.message??'No message'));logs.append(row);}if(nearBottom)logs.scrollTop=logs.scrollHeight;text('log-count',`${s.logs.length} REPORTS`);
+      const phases={idle:0,receiving:1,analyzing:2,decided:3,evaluated:4,complete:4};document.querySelectorAll('.phase-step').forEach((el,i)=>el.classList.toggle('done',i<(phases[s.phase]??0)));text('phase',s.phase==='idle'?'AWAITING FEED':running?'REPLAY IN PROGRESS':s.phase.toUpperCase());
+      const action=String(s.decision?.action??'').toLowerCase(),verdictColor={evacuate:colors.breached,contain:colors.hot,observe:colors.secure}[action]??'var(--muted)';$('verdict').style.setProperty('--verdict-color',verdictColor);text('verdict-icon',{evacuate:'↗',contain:'⊕',observe:'◎'}[action]??'?');
+      text('verdict-eyebrow',simulated?"SIMULATED COMMANDER'S DECISION":"COMMANDER'S DECISION");text('action',action?`${action.toUpperCase()}${s.decision.sector?' / '+pretty(s.decision.sector):''}`:'Awaiting assessment');text('rationale',s.decision?.rationale??(source==='demo'?'Run a simulation to watch the agent team investigate.':'The commander’s decision will appear when received.'));text('result',number(s.score?.score,2));text('result-label',simulated?'SIM SCORE / 1':'SCORE / 1');
+      text('score-detail',s.score?`Expected: ${pretty(s.score.expected_action).toUpperCase()} · False alarm: ${s.score.false_alarm===true?'YES':s.score.false_alarm===false?'NO':'—'}`:'');$('score-detail').hidden=!s.score;
+      const dispatch=s.dispatch;text('dispatch-status',!dispatch?'STANDBY':simulated||dispatch.simulated?'SIMULATED':dispatch.ok===true?'SENT':dispatch.ok===false?'FAILED':'REPORTED');text('dispatch-content',dispatch?.content??'A report appears here when the dispatcher emits a result.');
+      text('tokens',number(s.metrics?.total_tokens));text('cost',typeof s.metrics?.cost_usd==='number'?`$${s.metrics.cost_usd.toFixed(4)}`:'—');text('latency',number(s.metrics?.latency_s,2));text('agents-used',`${number(s.metrics?.agents_used)} / ${number(s.maxAgents)}`);text('credits',`${number(s.credits)} CREDITS LEFT`);
+      $('demo-source').setAttribute('aria-pressed',String(source==='demo'));$('live-source').setAttribute('aria-pressed',String(source==='live'));$('scenario').hidden=source!=='demo';$('run').disabled=source!=='demo';$('run').classList.toggle('running',running);text('run-label',source==='live'?'RUN NEXT TICK':running?'STOP SIMULATION':'RUN SIMULATION');text('run-icon',running?'□':'↗');text('run-hint',source==='live'?'Backend tick trigger is not connected yet. This view receives events.':running?'Replaying fictional agent reports…':'A local replay. No API keys required.');$('focus').disabled=!selected;
+      $('quick-run').disabled=source!=='demo';text('quick-run',source==='live'?'AWAITING BACKEND':running?'STOP SIMULATION □':'RUN SIMULATION ↗');
+    }
+    async function runDemo(){if(source!=='demo')return;if(running){generation++;running=false;render();return;}const token=++generation;running=true;demoModel=new MissionState();demoModel.ingest(getDemoPreview($('scenario').value));render();beep();for(const{delay,event}of getDemoSequence($('scenario').value)){await new Promise(resolve=>setTimeout(resolve,Math.max(0,delay)));if(token!==generation)return;demoModel.ingest(event);const mappedDecision=event.type==='decision'&&event.sector&&mapAreaForSector(event.sector);if(mappedDecision)selected=event.sector;if(source==='demo')render();if(event.type==='decision'){if(source==='demo'&&mappedDecision)scene.focus(event.sector);beep(740);text('announcement',`Simulated decision: ${event.action}`);}}if(token===generation){running=false;render();text('announcement','Simulation complete. Scores and dispatches are simulated.');}}
+    function setSource(next){if(next!==source){generation++;running=false;}source=next;selected=null;render();scene.overview();beep(480);}
+    $('run').addEventListener('click',runDemo);$('quick-run').addEventListener('click',runDemo);$('demo-source').addEventListener('click',()=>setSource('demo'));$('live-source').addEventListener('click',()=>setSource('live'));
+    $('scenario').addEventListener('change',()=>{generation++;running=false;demoModel=new MissionState();demoModel.ingest(getDemoPreview($('scenario').value));selected=null;render();scene.overview();});
+    $('iso').addEventListener('click',()=>{scene.setView('iso');$('iso').setAttribute('aria-pressed','true');$('top').setAttribute('aria-pressed','false');});$('top').addEventListener('click',()=>{scene.setView('top');$('iso').setAttribute('aria-pressed','false');$('top').setAttribute('aria-pressed','true');});
+    $('zoom-in').addEventListener('click',()=>scene.zoom(.82));$('zoom-out').addEventListener('click',()=>scene.zoom(1.22));$('overview').addEventListener('click',()=>scene.overview());$('focus').addEventListener('click',()=>selected&&scene.focus(selected));
+    $('sound').addEventListener('click',()=>{sound=!sound;$('sound').setAttribute('aria-pressed',String(sound));text('sound',sound?'SOUND ON':'SOUND OFF');beep();});function motionLabel(){$('motion-toggle').setAttribute('aria-pressed',String(motionEnabled));text('motion-toggle',motionEnabled?'MOTION ON':'MOTION OFF');}motionLabel();$('motion-toggle').addEventListener('click',()=>{motionEnabled=!motionEnabled;scene.setMotion(motionEnabled);motionLabel();});
+    let socket,retry;function connect(){socket=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws`);socket.onopen=()=>{$('bridge-dot').classList.add('online');text('bridge-status','BRIDGE CONNECTED');};socket.onmessage=message=>{try{const event=JSON.parse(message.data);liveModel.ingest(event);backendHasMock ||= liveModel.snapshot().isMock;backendEvents++;text('stream-count',`BACKEND · ${backendEvents} EVENTS`);if(source==='live'){const active=liveModel.snapshot();const focus=event.type==='decision'&&String(event.tick_id)===String(active.tickId)&&active.rooms.some(room=>room.id===event.sector&&mapAreaForSector(room.id));if(focus)selected=event.sector;render();if(focus)scene.focus(event.sector);}}catch(error){console.warn('Could not read backend event',error);}};socket.onclose=()=>{$('bridge-dot').classList.remove('online');text('bridge-status','BRIDGE RECONNECTING');retry=setTimeout(connect,2000);};socket.onerror=()=>socket.close();}
+    addEventListener('pagehide',()=>{clearTimeout(retry);socket.onclose=null;socket.close();scene.dispose();},{once:true});
+    addEventListener('pageshow',event=>{if(event.persisted)location.reload();});
+    render();scene.overview();connect();
   </script>
 </body>
 </html>

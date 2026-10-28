@@ -1,5 +1,5 @@
 """
-metrics.py: tokens, cost, speed and quality per tick for the Ghost Ops swarm (C5).
+metrics.py: tokens, cost, speed and quality per tick for the Watchtower swarm (C5).
 
     m = Metrics()
     m.start_tick(tick_id, n_sectors, max_agents)
@@ -138,7 +138,7 @@ class Metrics:
         if not s["ticks"]:
             return s
         star = "" if s["cost_complete"] else "  (* some model prices unknown, counted as $0)"
-        print("\n================ GHOST OPS METRICS ================")
+        print("\n================ WATCHTOWER METRICS ================")
         print(f"Ticks handled        {s['ticks']}  (scored: {s['scored_ticks']})")
         if s["avg_score"] is not None:
             print(f"Avg score            {s['avg_score']}  ({s['perfect']} perfect)")

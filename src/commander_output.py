@@ -35,7 +35,7 @@ def commander_decision(
         {
             "role": "system",
             "content": (
-                "You are the Ghost Ops Commander. Analyze the incident and return only the required JSON. "
+                "You are the Watchtower Commander. Analyze the incident and return only the required JSON. "
                 "Recommend evacuate when civilians are pinned/trapped and threat is breached/high; "
                 "recommend contain for a serious breach without civilians at risk; otherwise observe. "
                 "Never invent sensor values."

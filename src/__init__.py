@@ -1,1 +1,1 @@
-"""Ghost Ops backend modules."""
+"""Watchtower backend modules."""

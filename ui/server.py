@@ -10,6 +10,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 
 UI_DIRECTORY = Path(__file__).resolve().parent
@@ -66,9 +67,10 @@ async def wait_for_disconnect(socket: WebSocket) -> None:
 
 
 def create_app() -> FastAPI:
-    application = FastAPI(title="Ghost Ops event bridge")
+    application = FastAPI(title="Watchtower event bridge")
     hub = EventHub()
     application.state.hub = hub
+    application.mount("/assets", StaticFiles(directory=UI_DIRECTORY / "assets"), name="assets")
 
     @application.get("/", include_in_schema=False)
     async def index() -> FileResponse:
@@ -118,7 +120,7 @@ app = create_app()
 if __name__ == "__main__":
     import uvicorn
 
-    parser = argparse.ArgumentParser(description="Run the Ghost Ops C2 event bridge.")
+    parser = argparse.ArgumentParser(description="Run the Watchtower C2 event bridge.")
     parser.add_argument("--host", default="localhost")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()

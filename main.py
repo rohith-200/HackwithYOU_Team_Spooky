@@ -1,5 +1,5 @@
 """
-main.py: Ghost Ops tick loop.
+main.py: Watchtower incident tick loop.
 
   python main.py                  # fixtures only (safe, nothing submitted)
   python main.py --live           # live feed, submits every tick (counts!)
