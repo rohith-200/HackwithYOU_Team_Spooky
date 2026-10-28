@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <link rel="icon" href="data:,">
+  <title>Ghost Ops - Event Monitor</title>
+  <style>
+    :root { color-scheme: dark; font-family: ui-monospace, Consolas, monospace; background: #101319; color: #e1e8ef; }
+    * { box-sizing: border-box; }
+    body { max-width: 1120px; margin: auto; padding: 28px 20px; }
+    header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+    h1 { font-size: 1.4rem; margin: 0; }
+    p { color: #b6c2d0; line-height: 1.6; }
+    #connection { display: inline-flex; align-items: center; gap: 8px; }
+    #connection::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: #ffb454; }
+    #connection[data-connected="true"]::before { background: #7cffb2; }
+    .summary { display: flex; flex-wrap: wrap; gap: 14px 28px; margin: 24px 0; color: #b6c2d0; }
+    .summary strong { color: #e1e8ef; }
+    #empty { padding: 36px 0; }
+    ol { padding: 0; list-style: none; }
+    li { padding: 16px 0; border-top: 1px solid #303944; }
+    .event-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 16px; }
+    .event-type { color: #7cffb2; }
+    .event-meta { color: #b6c2d0; font-size: 0.85rem; }
+    pre { color: #d2dce6; font: inherit; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; margin: 12px 0 0; }
+    code { color: #c7b9ff; overflow-wrap: anywhere; }
+    button { font: inherit; color: inherit; background: #202731; border: 1px solid #485463; border-radius: 6px; padding: 8px 12px; }
+    button:focus-visible { outline: 2px solid #7cffb2; outline-offset: 3px; }
+    .controls { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+    @media (max-width: 480px) { body { padding: 20px 14px; } h1 { font-size: 1.2rem; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Ghost Ops / Event Monitor</h1>
+    <span id="connection" role="status" aria-live="polite" data-connected="false">Connecting...</span>
+  </header>
+  <p>C2 connection check. Incoming events appear below and in the browser console. Mock replay data, including scores and delivery statuses, is simulated.</p>
+  <div class="summary">
+    <span>Received <strong id="received">0</strong></span>
+    <span>Latest tick <strong id="tick">—</strong></span>
+    <span>Showing the latest 50 events</span>
+  </div>
+  <div class="controls">
+    <button id="clear" type="button">Clear display</button>
+    <span id="mode">Waiting for events</span>
+  </div>
+  <p id="empty">Start the mock replay to check the connection. Its incident data and scores are simulated.</p>
+  <ol id="events" aria-label="Received events, newest first"></ol>
+  <script>
+    (() => {
+      const connection = document.getElementById('connection');
+      const received = document.getElementById('received');
+      const tick = document.getElementById('tick');
+      const mode = document.getElementById('mode');
+      const empty = document.getElementById('empty');
+      const events = document.getElementById('events');
+      let total = 0;
+      let socket;
+      let reconnectTimer;
+      let stopped = false;
+
+      function showEvent(data) {
+        console.log('[Ghost Ops event]', data);
+        total += 1;
+        received.textContent = String(total);
+        tick.textContent = data.tick_id ?? '—';
+        const item = document.createElement('li');
+        const heading = document.createElement('div');
+        heading.className = 'event-heading';
+        const type = document.createElement('strong');
+        type.className = 'event-type';
+        type.textContent = data.type ?? 'unknown event';
+        const metadata = document.createElement('span');
+        metadata.className = 'event-meta';
+        metadata.textContent = `Tick ${data.tick_id ?? '—'} · ${new Date().toLocaleTimeString()}`;
+        const payload = document.createElement('pre');
+        payload.textContent = JSON.stringify(data, null, 2);
+        heading.append(type, metadata);
+        item.append(heading, payload);
+        events.prepend(item);
+        while (events.children.length > 50) events.lastElementChild.remove();
+        empty.hidden = true;
+        mode.textContent = 'Receiving event stream';
+      }
+
+      function connect() {
+        if (stopped) return;
+        clearTimeout(reconnectTimer);
+        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        socket = new WebSocket(`${protocol}//${location.host}/ws`);
+        socket.onopen = () => {
+          connection.dataset.connected = 'true';
+          connection.textContent = 'Connected';
+        };
+        socket.onmessage = event => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data && typeof data === 'object' && !Array.isArray(data)) showEvent(data);
+          } catch (error) { console.warn('[Ghost Ops] Invalid event', error); }
+        };
+        socket.onerror = () => socket.close();
+        socket.onclose = () => {
+          connection.dataset.connected = 'false';
+          connection.textContent = 'Disconnected · retrying in 2s';
+          if (!stopped) reconnectTimer = setTimeout(connect, 2000);
+        };
+      }
+
+      document.getElementById('clear').addEventListener('click', () => {
+        events.replaceChildren();
+        total = 0;
+        received.textContent = '0';
+        tick.textContent = '—';
+        mode.textContent = 'Waiting for events';
+        empty.hidden = false;
+      });
+      window.addEventListener('pagehide', () => {
+        stopped = true;
+        clearTimeout(reconnectTimer);
+        if (socket) socket.close();
+      });
+      window.addEventListener('pageshow', event => {
+        if (event.persisted) { stopped = false; connect(); }
+      });
+      connect();
+    })();
+  </script>
+</body>
+</html>

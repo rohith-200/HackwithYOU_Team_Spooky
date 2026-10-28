@@ -1,0 +1,6 @@
+fastapi==0.162.0
+starlette==1.10.0
+uvicorn==0.54.0
+websockets==17.3
+# Used by FastAPI's test client.
+httpx2==2.16.0
