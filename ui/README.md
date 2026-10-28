@@ -1,6 +1,6 @@
 # Ghost Ops command center
 
-Person C's C3 interface turns the C2 event stream into an interactive 3D incident board. The layout is a schematic, not an architectural floor plan of AWS Builder Loft. Each reported sector creates a room using its exact sector ID; unknown sectors appear automatically and keep their positions across ticks. Rooms absent from a later tick show **Not updated**, rather than being declared safe.
+Person C's C3 interface turns the C2 event stream into an interactive 3D incident board. The layout is a schematic, not an architectural floor plan of AWS Builder Loft. It follows the `pic3.jpeg` palette: purple Main Stage, teal Entrance, and dark-blue Catering Coffee Bar, with the other map regions retaining their reference colors. The Main Stage, screens, and seating sit along the entrance-side strip, with a low open wall for depth. Backend sectors outside those three areas remain in mission state and can still supply decisions and scores, but do not create rooms, highlights, or camera focus. Mapped rooms absent from a later tick show **Not updated**, rather than being declared safe.
 
 ## Start on Windows
 
@@ -17,7 +17,7 @@ Open http://localhost:8000. The page starts in **Simulation** mode with a fictio
 ## Explore the board
 
 - Drag the scene to rotate and use the mouse wheel or zoom controls to move closer or farther away.
-- Select a room or its label to inspect the reported readings, civilian status, and containment state.
+- Select a mapped room or its label to inspect the reported readings, civilian status, and containment state.
 - Use **Focus** to frame the selected sector and **Overview** to frame the whole board.
 - Switch between **Isometric** and **Top** camera views.
 - Turn motion off for a still scene; the interface also respects the system's reduced-motion preference.
@@ -32,7 +32,7 @@ The page includes agent reports, the commander's decision and rationale, evaluat
 
 - **Breach:** corroborating coffee-bar readings and four pinned civilians lead to a simulated evacuation decision.
 - **Control:** human crowd motion at the main stage leads to observation, with no research or escalation.
-- **Unknown sector:** the fictional `archive_annex` sector appears dynamically and receives a simulated containment decision.
+- **Unknown sector:** the fictional `archive_annex` sector remains in mission data but stays off the map; it still receives a simulated containment decision and score.
 
 All local replay events are tagged `_mock: true` and marked as demo data. Scores, model usage, and dispatch results are fictional. The replay runs no agents and contacts no scenario API, model API, You.com service, One service, or Discord channel.
 

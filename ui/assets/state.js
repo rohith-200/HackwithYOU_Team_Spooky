@@ -8,6 +8,27 @@ const HISTORY_LIMIT = 100;
 const SECURE_STATES = new Set(['holding', 'secure', 'intact']);
 const EVENT_TYPES = new Set(['tick_start', 'agent_log', 'decision', 'score', 'dispatch', 'metrics']);
 const PHASE_RANK = { idle: 0, receiving: 1, analyzing: 2, decided: 3, evaluated: 4, complete: 5 };
+const MAP_AREA_ALIASES = new Map([
+  ['main', 'main'],
+  ['main_area', 'main'],
+  ['main_hall', 'main'],
+  ['main_stage', 'main'],
+  ['stage', 'main'],
+  ['cafeteria', 'cafeteria'],
+  ['cafe', 'cafeteria'],
+  ['coffee_area', 'cafeteria'],
+  ['coffee_bar', 'cafeteria'],
+  ['catering_coffee_bar', 'cafeteria'],
+  ['entrance', 'entrance'],
+  ['entry', 'entrance'],
+  ['main_entrance', 'entrance'],
+]);
+
+export function mapAreaForSector(value) {
+  if (typeof value !== 'string') return null;
+  const identifier = value.toLowerCase().trim().replace(/[\s-]+/g, '_').replace(/_+/g, '_');
+  return MAP_AREA_ALIASES.get(identifier) ?? null;
+}
 
 function object(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);

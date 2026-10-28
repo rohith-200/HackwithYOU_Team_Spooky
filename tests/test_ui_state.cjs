@@ -45,6 +45,23 @@ test('normalized events preserve exact IDs, zero readings and explicit nulls', a
   assert.deepEqual(snapshot.metrics, { max_agents: 8, credits: 45000 });
 });
 
+test('only the three named map areas resolve; unknown sector decisions and scores remain available', async () => {
+  const { MissionState, mapAreaForSector } = await modulePromise;
+  assert.equal(mapAreaForSector('main_stage'), 'main');
+  assert.equal(mapAreaForSector('catering_coffee_bar'), 'cafeteria');
+  assert.equal(mapAreaForSector('entrance'), 'entrance');
+  assert.equal(mapAreaForSector('archive_annex'), null);
+
+  const mission = new MissionState();
+  mission.ingest(start(7, [room('archive_annex', { emf: 76 })]));
+  mission.ingest({ type: 'decision', tick_id: 7, sector: 'archive_annex', action: 'observe' });
+  mission.ingest({ type: 'score', tick_id: 7, score: 0 });
+  const snapshot = mission.snapshot();
+  assert.equal(snapshot.rooms[0].id, 'archive_annex');
+  assert.equal(snapshot.decision.sector, 'archive_annex');
+  assert.equal(snapshot.score.score, 0);
+});
+
 test('raw supplied fixtures flatten without inferring a backend threat assessment', async () => {
   const mission = await state();
   const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, '../fixtures/outbreak-level-5.json'), 'utf8'));
