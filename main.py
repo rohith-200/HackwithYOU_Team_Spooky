@@ -16,9 +16,24 @@ import sys
 import time
 
 from src.feed import QUEUE_FILE, SCENARIOS, FixtureFeed, LiveFeed
+from src.metrics import Metrics
 from src.rules import decide
 
+try:
+    from src.events import emit          # UI events (Person C's bridge)
+except Exception:
+    def emit(event):  # noqa: E306
+        pass
+
 USE_CREW = "--crew" in sys.argv
+METRICS = Metrics()
+
+
+def ui(event: dict):
+    try:
+        emit(event)
+    except Exception:
+        pass
 
 
 async def decide_tick(tick: dict) -> dict:
@@ -70,7 +85,12 @@ async def run_scenario(feed, scenario: str, dry_run: bool, submit_feed=None):
         seen.add(tick_id)
 
         t0 = time.perf_counter()
+        budget = tick.get("swarm_budget") or {}
+        METRICS.start_tick(tick_id, len(tick.get("sector_reports") or []),
+                           budget.get("max_active_agents", 8))
         decision = await decide_tick(tick)
+        METRICS.add_usage(decision.get("usage"))
+        METRICS.add_search(decision.get("searches", 0))
         print_tick(tick, decision)
 
         if dry_run:
@@ -81,6 +101,20 @@ async def run_scenario(feed, scenario: str, dry_run: bool, submit_feed=None):
             judgment = await (submit_feed or feed).submit(tick_id, decision["action"])
         print_judgment(judgment)
         print(f"  latency {time.perf_counter() - t0:.2f}s")
+
+        if "score" in judgment:
+            ui({"type": "score", "tick_id": tick_id, "expected_action": judgment.get("expected_action"),
+                "score": judgment.get("score"), "false_alarm": judgment.get("false_alarm")})
+        row = METRICS.end_tick(action=decision["action"], score=judgment.get("score"),
+                               false_alarm=judgment.get("false_alarm"),
+                               escalated=bool(decision.get("alert")),
+                               agents_used=decision.get("agents_used", 0),
+                               research_skipped=not decision.get("searches"),
+                               source=decision.get("source", ""))
+        ui({"type": "metrics", "tick_id": tick_id, "total_tokens": row["total_tokens"],
+            "cost_usd": row["cost_usd"], "latency_s": row["latency_s"],
+            "agents_used": row["agents_used"], "max_agents": row["max_agents"],
+            "searches": row["searches"]})
 
         if exhausted:
             break
@@ -136,5 +170,14 @@ async def main():
                 await run_scenario(feed, scenario, dry_run=True)
 
 
+def finish():
+    METRICS.summary()
+    if METRICS.ticks:
+        METRICS.save("metrics.json")
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    finally:
+        finish()

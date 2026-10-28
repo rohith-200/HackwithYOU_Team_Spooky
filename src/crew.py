@@ -275,6 +275,7 @@ def _pyd(task):
 
 # ---------- token counting: every model call goes through LiteLLM ----------
 _LLM_USAGE = {"prompt_tokens": 0, "completion_tokens": 0, "requests": 0}
+_LLM_BY_MODEL: dict[str, dict] = {}
 
 
 def _track_usage(kwargs, response, start_time, end_time):
@@ -284,9 +285,15 @@ def _track_usage(kwargs, response, start_time, end_time):
     if u is None:
         return
     get = (lambda k: u.get(k, 0)) if isinstance(u, dict) else (lambda k: getattr(u, k, 0))
-    _LLM_USAGE["prompt_tokens"] += get("prompt_tokens") or 0
-    _LLM_USAGE["completion_tokens"] += get("completion_tokens") or 0
+    p_tok, c_tok = get("prompt_tokens") or 0, get("completion_tokens") or 0
+    _LLM_USAGE["prompt_tokens"] += p_tok
+    _LLM_USAGE["completion_tokens"] += c_tok
     _LLM_USAGE["requests"] += 1
+    model = str((kwargs or {}).get("model") or "unknown").split("/", 1)[-1]
+    m = _LLM_BY_MODEL.setdefault(model, {"prompt_tokens": 0, "completion_tokens": 0, "requests": 0})
+    m["prompt_tokens"] += p_tok
+    m["completion_tokens"] += c_tok
+    m["requests"] += 1
 
 
 try:
@@ -300,11 +307,19 @@ except Exception:
 
 
 def _usage_snapshot() -> dict:
-    return dict(_LLM_USAGE)
+    return {"t": dict(_LLM_USAGE), "m": {k: dict(v) for k, v in _LLM_BY_MODEL.items()}}
 
 
 def _usage_since(before: dict) -> dict:
-    return {k: _LLM_USAGE[k] - before.get(k, 0) for k in _LLM_USAGE}
+    out = {k: _LLM_USAGE[k] - before["t"].get(k, 0) for k in _LLM_USAGE}
+    by_model = {}
+    for model, v in _LLM_BY_MODEL.items():
+        b = before["m"].get(model, {})
+        d = {k: v[k] - b.get(k, 0) for k in v}
+        if d["requests"]:
+            by_model[model] = d
+    out["by_model"] = by_model
+    return out
 
 
 def _usage(result, crew=None) -> dict:
