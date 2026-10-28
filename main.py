@@ -9,15 +9,19 @@ main.py: Watchtower incident tick loop.
 Add --crew to any mode to decide with the CrewAI swarm instead of the plain rule.
   python main.py --crew                     # swarm on fixtures, nothing submitted
   python main.py --crew --submit-fixtures   # swarm on fixture ticks, submit to LIVE scoreboard
+
+Add --send-discord to explicitly enable webhook alerts after a successful submission.
 """
 import asyncio
 import json
+import os
 import sys
 import time
 
 from src.feed import QUEUE_FILE, SCENARIOS, FixtureFeed, LiveFeed
 from src.metrics import Metrics
 from src.rules import decide
+from src.tools.discord_webhook import post_alert
 
 try:
     from src.events import emit          # UI events (Person C's bridge)
@@ -26,6 +30,8 @@ except Exception:
         pass
 
 USE_CREW = "--crew" in sys.argv
+SEND_DISCORD = "--send-discord" in sys.argv
+MANUAL_ALERTS = "manual_alerts.txt"
 METRICS = Metrics()
 
 
@@ -34,6 +40,52 @@ def ui(event: dict):
         emit(event)
     except Exception:
         pass
+
+
+async def send_alert(tick: dict, content: str) -> bool:
+    ok = await post_alert(content)
+    ui({"type": "dispatch", "tick_id": tick.get("tick_id"),
+        "facility_id": tick.get("facility_id"), "content": content,
+        "ok": ok, "status": "sent" if ok else "failed"})
+    if ok:
+        print("  DISCORD: alert sent")
+        METRICS.add_one_action()
+        return True
+
+    try:
+        with open(MANUAL_ALERTS, "a", encoding="utf-8") as alerts:
+            alerts.write(content + "\n")
+    except OSError as error:
+        print(f"  Discord alert failed; could not save manual fallback: {error}")
+    else:
+        print(f"  Discord alert failed; manual fallback saved to {MANUAL_ALERTS}")
+        print(f"  MANUAL ALERT: {content}")
+    return False
+
+
+def emit_rule_events(tick: dict, decision: dict):
+    tick_id = tick.get("tick_id")
+    facility_id = tick.get("facility_id")
+    hot_by_sector = {
+        assessment.get("sector"): assessment.get("hot")
+        for assessment in decision.get("assessments", [])
+        if isinstance(assessment, dict)
+    }
+    sector_reports = []
+    for report in tick.get("sector_reports") or []:
+        if not isinstance(report, dict):
+            continue
+        enriched = dict(report)
+        hot = hot_by_sector.get(report.get("sector"))
+        if isinstance(hot, bool):
+            enriched["hot"] = hot
+        sector_reports.append(enriched)
+    ui({"type": "tick_start", "tick_id": tick_id, "facility_id": facility_id,
+        "sector_reports": sector_reports,
+        "swarm_budget": tick.get("swarm_budget") or {}})
+    ui({"type": "decision", "tick_id": tick_id, "facility_id": facility_id,
+        "action": decision.get("action"), "sector": decision.get("sector"),
+        "rationale": decision.get("rationale"), "source": decision.get("source", "rule")})
 
 
 async def decide_tick(tick: dict) -> dict:
@@ -62,7 +114,7 @@ def print_tick(tick: dict, decision: dict):
     if decision.get("searches"):
         print(f"  You.com searches: {decision['searches']}  sources: {decision.get('lore_sources', [])[:3]}")
     if decision.get("alert"):
-        print(f"  ALERT (Discord, not sent yet): {decision['alert']}")
+        print(f"  ALERT DRAFT: {decision['alert']}")
 
 
 def print_judgment(j: dict):
@@ -92,6 +144,8 @@ async def run_scenario(feed, scenario: str, dry_run: bool, submit_feed=None):
         METRICS.add_usage(decision.get("usage"))
         METRICS.add_search(decision.get("searches", 0))
         print_tick(tick, decision)
+        if not USE_CREW or str(decision.get("source", "")).startswith("rule fallback"):
+            emit_rule_events(tick, decision)
 
         if dry_run:
             with QUEUE_FILE.open("a") as f:
@@ -102,8 +156,33 @@ async def run_scenario(feed, scenario: str, dry_run: bool, submit_feed=None):
         print_judgment(judgment)
         print(f"  latency {time.perf_counter() - t0:.2f}s")
 
+        if decision.get("alert"):
+            submitted = (
+                not dry_run
+                and not judgment.get("queued")
+                and not judgment.get("duplicate")
+                and judgment.get("ok") is not False
+                and not judgment.get("error")
+            )
+            can_send = SEND_DISCORD and submitted
+            if can_send:
+                await send_alert(tick, decision["alert"])
+            else:
+                ui({"type": "dispatch", "tick_id": tick_id,
+                    "facility_id": tick.get("facility_id"),
+                    "content": decision["alert"], "status": "drafted"})
+                if not SEND_DISCORD:
+                    print("  DISCORD: draft only; pass --send-discord to opt in")
+                elif judgment.get("duplicate"):
+                    print("  DISCORD: not sent for a duplicate judgment")
+                elif dry_run or judgment.get("queued"):
+                    print("  DISCORD: not sent because this run did not submit")
+                elif not submitted:
+                    print("  DISCORD: not sent because submission was not confirmed")
+
         if "score" in judgment:
-            ui({"type": "score", "tick_id": tick_id, "expected_action": judgment.get("expected_action"),
+            ui({"type": "score", "tick_id": tick_id, "facility_id": tick.get("facility_id"),
+                "expected_action": judgment.get("expected_action"),
                 "score": judgment.get("score"), "false_alarm": judgment.get("false_alarm")})
         row = METRICS.end_tick(action=decision["action"], score=judgment.get("score"),
                                false_alarm=judgment.get("false_alarm"),
@@ -111,7 +190,8 @@ async def run_scenario(feed, scenario: str, dry_run: bool, submit_feed=None):
                                agents_used=decision.get("agents_used", 0),
                                research_skipped=not decision.get("searches"),
                                source=decision.get("source", ""))
-        ui({"type": "metrics", "tick_id": tick_id, "total_tokens": row["total_tokens"],
+        ui({"type": "metrics", "tick_id": tick_id, "facility_id": tick.get("facility_id"),
+            "total_tokens": row["total_tokens"],
             "cost_usd": row["cost_usd"], "latency_s": row["latency_s"],
             "agents_used": row["agents_used"], "max_agents": row["max_agents"],
             "searches": row["searches"]})
@@ -131,9 +211,19 @@ async def replay(feed):
     QUEUE_FILE.unlink()
 
 
+async def test_discord():
+    team = os.environ.get("TEAM_HANDLE", "team-xx")
+    sent = await post_alert(f"{team} · test · Discord webhook is configured")
+    print("Discord test message sent." if sent else "Discord test message failed.")
+
+
 async def main():
     live = "--live" in sys.argv or "--replay" in sys.argv
     dry_run = "--dry-run" in sys.argv
+
+    if "--test-discord" in sys.argv:
+        await test_discord()
+        return
 
     if "--submit-fixtures" in sys.argv:  # live ticks == fixtures; cursor already exhausted
         print("Fixture ticks -> LIVE scoreboard. Each tick counts once!")
