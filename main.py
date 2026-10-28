@@ -41,6 +41,11 @@ def print_tick(tick: dict, decision: dict):
     print(f"  DECISION: {decision['action'].upper()}  ({decision['rationale']})")
     print(f"  source: {decision.get('source', 'rule')}  agents: {decision.get('agents_used', 0)}"
           f"  tokens: {sum(decision.get('usage', {}).get(k, 0) for k in ('prompt_tokens', 'completion_tokens'))}")
+    for sec, t in (decision.get("triage") or {}).items():
+        sim = f" sim={t['similarity']}" if t.get("similarity") is not None else ""
+        print(f"  triage {sec}: {'HOT' if t['hot'] else 'calm'} via {t['method']}{sim}")
+    if decision.get("searches"):
+        print(f"  You.com searches: {decision['searches']}  sources: {decision.get('lore_sources', [])[:3]}")
     if decision.get("alert"):
         print(f"  ALERT (Discord, not sent yet): {decision['alert']}")
 
