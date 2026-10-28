@@ -17,7 +17,6 @@
   --violet: #b49bcf;
   --mono: Consolas, "SFMono-Regular", monospace;
   --heading: Bahnschrift, "Arial Narrow", "Segoe UI", sans-serif;
-  --display: "Chiller", "Jokerman", Georgia, serif;
   font-family: "Segoe UI", Arial, sans-serif;
   font-synthesis: none;
   background: var(--bg);
@@ -44,7 +43,7 @@ h1, h2, h3 { font-family: var(--heading); font-weight: 600; }
 header { min-height: 80px; display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid var(--line); box-shadow: 0 1px #ff9a5208; }
 .brand { display: flex; align-items: center; gap: 12px; }
 .brand-mark { width: 33px; height: 38px; color: var(--mint); }
-.brand-name { font-family: var(--display); font-size: 30px; font-weight: 600; line-height: 0.9; letter-spacing: 1.8px; color: #ffc18d; text-shadow: 0 0 18px #ff754b25; }
+.brand-name { font-family: var(--heading); font-size: 22px; font-weight: 650; line-height: 1; letter-spacing: 1.2px; color: #ffc18d; }
 .brand-name small { display: block; color: var(--muted); font: 9px/1.5 var(--mono); letter-spacing: 2.1px; margin-top: 7px; }
 .header-tools { display: flex; align-items: center; gap: 23px; }
 .source-switch { display: inline-flex; padding: 4px; gap: 2px; border: 1px solid var(--line); border-radius: 7px; background: #11191b; }
@@ -61,7 +60,7 @@ header { min-height: 80px; display: flex; align-items: center; justify-content: 
 .eyebrow { color: var(--muted); font: 9px/1.5 var(--mono); letter-spacing: 1.6px; text-transform: uppercase; }
 .mission-head .eyebrow { display: flex; align-items: center; gap: 11px; margin-bottom: 9px; }
 .index { color: var(--mint); font: 9px/1.2 var(--mono); padding: 3px 5px; border: 1px solid #785238; border-radius: 2px; letter-spacing: 0.4px; }
-h1 { font-family: var(--display); font-size: clamp(34px, 3vw, 49px); font-weight: 500; letter-spacing: 0.5px; line-height: 0.98; color: #ffd2a5; text-shadow: 0 2px 0 #39243a, 0 0 24px #a84c3025; }
+h1 { font-size: clamp(28px, 2.55vw, 42px); letter-spacing: -1.2px; line-height: 1.08; color: #ffd2a5; }
 .mission-description { color: var(--muted); font-size: 11px; line-height: 1.7; margin-top: 9px; }
 .mission-meta { display: flex; gap: 32px; align-items: center; }
 .meta { min-width: 81px; color: var(--muted); font: 9px/1.5 var(--mono); text-transform: uppercase; letter-spacing: 1px; }
@@ -103,7 +102,7 @@ h1 { font-family: var(--display); font-size: clamp(34px, 3vw, 49px); font-weight
 .panel:has(> .intel-head) { padding: 0 15px 15px; }
 .panel:has(> .intel-head) > .panel-title { margin: 0 -15px 15px; }
 .intel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 7px; margin-bottom: 16px; }
-.intel-head h2 { font-family: var(--display); font-size: 24px; font-weight: 500; line-height: 0.98; letter-spacing: 0.3px; color: #f0c39b; overflow-wrap: anywhere; }
+.intel-head h2 { font-size: 17px; line-height: 1.3; letter-spacing: -0.2px; color: #f0c39b; overflow-wrap: anywhere; }
 .intel-head .tag { margin-top: 3px; font-size: 7px; }
 .readings { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .reading { background: #100c15; border: 1px solid #35263c; border-radius: 4px; padding: 9px 10px 10px; min-width: 0; }
@@ -171,7 +170,7 @@ dl.intel-details { margin-bottom: 0; }
 .verdict-icon svg { width: 24px; height: 26px; }
 .verdict-copy { flex: 1; min-width: 0; }
 .verdict-copy .eyebrow { font-size: 7px; letter-spacing: 1px; color: var(--quiet); }
-.verdict-copy h2 { color: var(--verdict-color, var(--ink)); font-family: var(--display); font-size: 26px; font-weight: 500; line-height: 1; letter-spacing: 0.6px; margin-top: 4px; }
+.verdict-copy h2 { color: var(--verdict-color, var(--ink)); font-size: 21px; line-height: 1.2; letter-spacing: 0.8px; margin-top: 3px; }
 .verdict-copy p { color: #b19dab; font-size: 9px; line-height: 1.55; margin-top: 5px; max-width: 52ch; }
 .verdict-result { text-align: right; font: 25px/1.2 var(--heading); color: var(--verdict-color, var(--ink)); flex-shrink: 0; }
 .verdict-result small { display: block; font: 7px/1.5 var(--mono); text-transform: uppercase; letter-spacing: 0.5px; color: var(--quiet); margin-top: 4px; }
