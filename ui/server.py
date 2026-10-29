@@ -5,7 +5,10 @@ import asyncio
 from contextlib import suppress
 from dataclasses import dataclass, field
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -15,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 
 UI_DIRECTORY = Path(__file__).resolve().parent
 MAX_PENDING_EVENTS = 100
+BACKEND_PROCESS: subprocess.Popen | None = None
 
 
 @dataclass(eq=False)
@@ -84,6 +88,36 @@ def create_app() -> FastAPI:
         except ValueError as exc:
             raise HTTPException(status_code=422, detail="Event must contain valid JSON values") from exc
         return {"ok": True, "clients": recipients}
+
+    @application.post("/run")
+    async def run_backend() -> dict[str, Any]:
+        """Start or trigger the local backend worker for one fixture tick."""
+        global BACKEND_PROCESS
+        if BACKEND_PROCESS is not None and BACKEND_PROCESS.poll() is None:
+            assert BACKEND_PROCESS.stdin is not None
+            BACKEND_PROCESS.stdin.write(b"\n")
+            BACKEND_PROCESS.stdin.flush()
+            return {"ok": True, "started": False, "status": "tick_triggered"}
+
+        project_root = UI_DIRECTORY.parent
+        environment = os.environ.copy()
+        environment.setdefault("UI_URL", "http://localhost:8000")
+        BACKEND_PROCESS = subprocess.Popen(
+            [
+                sys.executable,
+                str(project_root / "main.py"),
+                "--crew",
+                "--worker",
+                "--send-discord",
+            ],
+            cwd=project_root,
+            env=environment,
+            stdin=subprocess.PIPE,
+        )
+        assert BACKEND_PROCESS.stdin is not None
+        BACKEND_PROCESS.stdin.write(b"\n")
+        BACKEND_PROCESS.stdin.flush()
+        return {"ok": True, "started": True, "status": "tick_triggered"}
 
     @application.websocket("/ws")
     async def browser_events(socket: WebSocket) -> None:
