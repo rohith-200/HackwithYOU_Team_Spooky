@@ -47,6 +47,17 @@ def _unwrap_tick(data: dict) -> tuple[dict, bool]:
     return tick, exhausted
 
 
+def _normalize_submission(data: dict) -> dict:
+    """Expose the official nested judgment without losing envelope status flags."""
+    judgment = data.get("judgment")
+    # Envelope fields take precedence, especially duplicate/ok/error: callers
+    # use those to decide whether an incident alert is allowed to be sent.
+    normalized = {**judgment, **data} if isinstance(judgment, dict) else dict(data)
+    if "expected_action" not in normalized and "expected" in normalized:
+        normalized["expected_action"] = normalized["expected"]
+    return normalized
+
+
 class LiveFeed:
     def __init__(self, url: str = URL, team: str = TEAM):
         if not team:
@@ -80,8 +91,9 @@ class LiveFeed:
         return _unwrap_tick(data)
 
     async def submit(self, tick_id: int, action: str) -> dict:
-        return await self._call("hack26-submit-containment",
+        data = await self._call("hack26-submit-containment",
                                 {"team": self.team, "tick_id": int(tick_id), "action": action})
+        return _normalize_submission(data)
 
     async def scoreboard(self) -> dict:
         return await self._call("hack26-get-scoreboard", {})
