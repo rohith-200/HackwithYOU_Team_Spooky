@@ -7,6 +7,7 @@ const LOG_LIMIT = 50;
 const HISTORY_LIMIT = 100;
 const SECURE_STATES = new Set(['holding', 'secure', 'intact']);
 const EVENT_TYPES = new Set(['tick_start', 'agent_log', 'decision', 'score', 'dispatch', 'metrics']);
+const RUN_MODES = new Set(['fixture', 'fixture-submit', 'live', 'live-dry-run']);
 const PHASE_RANK = { idle: 0, receiving: 1, analyzing: 2, decided: 3, evaluated: 4, complete: 5 };
 const MAP_AREA_ALIASES = new Map([
   ['main', 'main'],
@@ -34,6 +35,12 @@ export function mapAreaForSector(value) {
 export function mapSlotForSector(value) {
   const area = mapAreaForSector(value);
   return area === null ? null : MAP_AREA_SLOTS.get(area) ?? null;
+}
+
+export function shouldSelectBackend(event, snapshot, explicitlySelected = false) {
+  return !explicitlySelected && ['tick_start', 'metrics'].includes(event?.type)
+    && snapshot.tickId !== null
+    && (!event.run_id || event.run_id === snapshot.runId);
 }
 
 function object(value) {
@@ -101,6 +108,10 @@ function normalizeSector(sector, slot, tickId) {
 /** Reducer for the six documented event types; future events are harmless. */
 export class MissionState {
   constructor() {
+    this._runId = null;
+    this._runMode = null;
+    this._seenRunIds = new Set();
+    this._reportedTotals = null;
     this._activeKey = null;
     this._records = new Map();
     this._facilities = new Map();
@@ -162,6 +173,21 @@ export class MissionState {
 
   ingest(event) {
     if (!object(event) || !EVENT_TYPES.has(event.type)) return this.snapshot();
+    if (typeof event.run_id === 'string' && event.run_id.length && event.run_id !== this._runId) {
+      // A new main.py process can reuse fixture tick IDs. Retired processes
+      // cannot rewind the current run if an old request arrives late.
+      if (!identifier(event.tick_id) || this._seenRunIds.has(event.run_id)) return this.snapshot();
+      this._runId = event.run_id;
+      this._runMode = null;
+      this._seenRunIds.add(event.run_id);
+      this._reportedTotals = null;
+      this._activeKey = null;
+      this._records.clear();
+      this._facilities.clear();
+      this._startedTicks.clear();
+      this._scores.clear();
+    }
+    if (RUN_MODES.has(event.run_mode)) this._runMode = event.run_mode;
 
     const found = this._findRecord(event);
     if (!found) return this.snapshot();
@@ -233,6 +259,7 @@ export class MissionState {
         case 'metrics':
           record.metrics = { ...record.metrics, ...copy(event) };
           record.hasMetrics = true;
+          if (key === this._activeKey && object(event.totals)) this._reportedTotals = copy(event.totals);
           this._advance(record, record.phase);
           break;
       }
@@ -255,7 +282,17 @@ export class MissionState {
       if (result.falseAlarm) totals.falseAlarms += 1;
     }
     if (totals.ticksScored) totals.averageScore = scoreSum / totals.ticksScored;
+    // main.py supplies full-run totals so a browser opened after earlier ticks
+    // still shows the actual mission record instead of just its replay window.
+    if (this._reportedTotals) {
+      const reported = this._reportedTotals;
+      if (numeric(reported.scored_ticks)) totals.ticksScored = reported.scored_ticks;
+      if (numeric(reported.avg_score) || reported.avg_score === null) totals.averageScore = reported.avg_score;
+      if (numeric(reported.false_alarms)) totals.falseAlarms = reported.false_alarms;
+    }
     return copy({
+      runId: this._runId,
+      runMode: this._runMode,
       tickId: active?.tickId ?? null,
       facilityId: active?.facilityId ?? null,
       rooms: [...(this._facilities.get(active?.facilityId)?.rooms.values() ?? [])].sort((a, b) => a.slot - b.slot),
@@ -270,6 +307,7 @@ export class MissionState {
       tickCount: this._startedTicks.size,
       isMock: active?.isMock ?? false,
       phase: active?.phase ?? 'idle',
+      hasMetrics: active?.hasMetrics ?? false,
     });
   }
 }

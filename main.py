@@ -13,10 +13,12 @@ Add --crew to any mode to decide with the CrewAI swarm instead of the plain rule
 Add --send-discord to explicitly enable webhook alerts after a successful submission.
 """
 import asyncio
+from contextlib import nullcontext
 import json
 import os
 import sys
 import time
+from uuid import uuid4
 
 from src.feed import QUEUE_FILE, SCENARIOS, FixtureFeed, LiveFeed
 from src.metrics import Metrics
@@ -24,15 +26,19 @@ from src.rules import decide
 from src.tools.discord_webhook import post_alert
 
 try:
-    from src.events import emit          # UI events (Person C's bridge)
+    from src.events import emit, event_context  # UI events (Person C's bridge)
 except Exception:
     def emit(event):  # noqa: E306
         pass
+
+    def event_context(**_metadata):
+        return nullcontext()
 
 USE_CREW = "--crew" in sys.argv
 SEND_DISCORD = "--send-discord" in sys.argv
 MANUAL_ALERTS = "manual_alerts.txt"
 METRICS = Metrics()
+RUN_ID = uuid4().hex
 
 
 def ui(event: dict):
@@ -127,6 +133,17 @@ def print_judgment(j: dict):
 
 
 async def run_scenario(feed, scenario: str, dry_run: bool, submit_feed=None):
+    if isinstance(feed, FixtureFeed):
+        run_mode = "fixture-submit" if submit_feed is not None and not dry_run else "fixture"
+    else:
+        run_mode = "live-dry-run" if dry_run else "live"
+    # A live-feed failure can reuse the same tick IDs from fixture inputs.
+    # Keep that fallback segment distinct from the earlier official results.
+    with event_context(run_id=f"{RUN_ID}:{run_mode}", run_mode=run_mode):
+        await _run_scenario(feed, scenario, dry_run, submit_feed)
+
+
+async def _run_scenario(feed, scenario: str, dry_run: bool, submit_feed=None):
     print(f"\n===== scenario: {scenario} =====")
     seen = set()
     for _ in range(MAX_TICKS_PER_SCENARIO):
@@ -189,12 +206,23 @@ async def run_scenario(feed, scenario: str, dry_run: bool, submit_feed=None):
                                escalated=bool(decision.get("alert")),
                                agents_used=decision.get("agents_used", 0),
                                research_skipped=not decision.get("searches"),
-                               source=decision.get("source", ""))
+                               source=decision.get("source", ""),
+                               usage_complete=(
+                                   decision.get("usage_complete") is not False
+                                   and decision.get("cost_complete") is not False
+                                   and (decision.get("usage") or {}).get("complete") is not False
+                                   and not str(decision.get("source", "")).startswith("rule fallback")
+                                   and " (retry on " not in str(decision.get("source", ""))
+                               ))
         ui({"type": "metrics", "tick_id": tick_id, "facility_id": tick.get("facility_id"),
             "total_tokens": row["total_tokens"],
             "cost_usd": row["cost_usd"], "latency_s": row["latency_s"],
             "agents_used": row["agents_used"], "max_agents": row["max_agents"],
-            "searches": row["searches"]})
+            "searches": row["searches"], "cost_complete": row["cost_complete"],
+            "llm_calls": row["llm_calls"], "source": row["source"],
+            "within_budget": row["within_budget"],
+            "research_skipped": row["research_skipped"], "by_model": row["by_model"],
+            "totals": METRICS.totals()})
 
         if exhausted:
             break

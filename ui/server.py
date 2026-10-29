@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+from collections import deque
 from contextlib import suppress
 from dataclasses import dataclass, field
 import json
@@ -15,6 +16,8 @@ from fastapi.staticfiles import StaticFiles
 
 UI_DIRECTORY = Path(__file__).resolve().parent
 MAX_PENDING_EVENTS = 100
+MAX_REPLAY_LOGS = 50
+REPLAY_TYPES = {"tick_start", "agent_log", "decision", "score", "dispatch", "metrics"}
 
 
 @dataclass(eq=False)
@@ -31,17 +34,76 @@ class EventHub:
 
     def __init__(self) -> None:
         self.connections: set[BrowserConnection] = set()
+        self._run_id: str | None = None
+        self._seen_runs: deque[str] = deque(maxlen=100)
+        self._tick: tuple[Any, Any] | None = None
+        self._seen_ticks: deque[tuple[Any, Any]] = deque(maxlen=100)
+        self._latest: dict[str, tuple[int, str]] = {}
+        self._logs: deque[tuple[int, str]] = deque(maxlen=MAX_REPLAY_LOGS)
+        self._sequence = 0
 
     def add(self, socket: WebSocket) -> BrowserConnection:
         connection = BrowserConnection(socket)
+        # A late browser receives the current tick before joining live delivery.
+        # This synchronous step cannot interleave with publish(), and the replay
+        # is at most five singleton events plus fifty agent reports.
+        start = self._latest.get("tick_start")
+        replay = sorted(
+            [value for kind, value in self._latest.items() if kind != "tick_start"]
+            + list(self._logs)
+        )
+        if start:
+            connection.outbox.put_nowait(start[1])
+        for _, payload in replay:
+            connection.outbox.put_nowait(payload)
         self.connections.add(connection)
         return connection
+
+    def _retain(self, event: dict[str, Any], payload: str) -> None:
+        kind = event.get("type")
+        if not isinstance(kind, str) or kind not in REPLAY_TYPES:
+            return
+        run_id = event.get("run_id")
+        if isinstance(run_id, str) and run_id and run_id != self._run_id:
+            if event.get("tick_id") is None:
+                return
+            if run_id in self._seen_runs:
+                return  # A delayed result must not restore an earlier run.
+            self._seen_runs.append(run_id)
+            self._run_id = run_id
+            self._tick = None
+            self._seen_ticks.clear()
+            self._latest.clear()
+            self._logs.clear()
+        tick_id = event.get("tick_id", self._tick[1] if self._tick else None)
+        if tick_id is None:
+            return
+        facility = event.get("facility_id", self._tick[0] if self._tick else None)
+        tick = (facility, tick_id)
+        if kind == "tick_start" and tick != self._tick:
+            if tick in self._seen_ticks:
+                return
+            self._seen_ticks.append(tick)
+            self._tick = tick
+            self._latest.clear()
+            self._logs.clear()
+        elif self._tick is None:
+            self._tick = tick
+        elif tick != self._tick:
+            return  # Still broadcast late results, without replacing the replay.
+        self._sequence += 1
+        entry = (self._sequence, payload)
+        if kind == "agent_log":
+            self._logs.append(entry)
+        else:
+            self._latest[kind] = entry
 
     def remove(self, connection: BrowserConnection) -> None:
         self.connections.discard(connection)
 
     def publish(self, event: dict[str, Any]) -> int:
         payload = json.dumps(event, ensure_ascii=False, allow_nan=False)
+        self._retain(event, payload)
         queued = 0
         for connection in tuple(self.connections):
             try:

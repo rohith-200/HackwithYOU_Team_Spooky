@@ -1,5 +1,6 @@
 """Run from the repository root: python -B -m unittest discover -s tests -v."""
 
+import asyncio
 import json
 import os
 from queue import Queue
@@ -10,7 +11,7 @@ import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
-from src.events import emit
+from src.events import emit, event_context
 
 
 class EventEmitterTests(unittest.TestCase):
@@ -38,6 +39,48 @@ class EventEmitterTests(unittest.TestCase):
         with patch.dict(os.environ, {"UI_URL": " "}), patch("src.events.urlopen") as send:
             emit({"type": "score"})
         self.assertEqual(send.call_args.args[0].full_url, "http://localhost:8000/emit")
+
+    def test_nested_context_restores_values_and_explicit_fields_win(self):
+        event = {"type": "decision", "run_mode": "explicit"}
+        with patch("src.events.urlopen") as send:
+            with event_context(run_id="outer", run_mode="fixture"):
+                emit(event)
+                try:
+                    with event_context(run_id="inner"):
+                        emit({"type": "metrics"})
+                        raise ValueError("context cleanup")
+                except ValueError:
+                    pass
+                emit({"type": "score"})
+            emit({"type": "tick_start"})
+
+        payloads = [json.loads(call.args[0].data) for call in send.call_args_list]
+        self.assertEqual(payloads, [
+            {"run_id": "outer", "run_mode": "explicit", "type": "decision"},
+            {"run_id": "inner", "run_mode": "fixture", "type": "metrics"},
+            {"run_id": "outer", "run_mode": "fixture", "type": "score"},
+            {"type": "tick_start"},
+        ])
+        self.assertEqual(event, {"type": "decision", "run_mode": "explicit"})
+
+    def test_context_is_inherited_by_child_tasks_without_leaking_between_runs(self):
+        async def send_run(run_id):
+            with event_context(run_id=run_id):
+                await asyncio.sleep(0)
+                await asyncio.create_task(send_child())
+
+        async def send_child():
+            emit({"type": "agent_log"})
+
+        async def send_both():
+            await asyncio.gather(send_run("first"), send_run("second"))
+
+        with patch("src.events.urlopen") as send:
+            asyncio.run(send_both())
+            emit({"type": "metrics"})
+        payloads = [json.loads(call.args[0].data) for call in send.call_args_list]
+        self.assertEqual({payload["run_id"] for payload in payloads[:2]}, {"first", "second"})
+        self.assertEqual(payloads[2], {"type": "metrics"})
 
     def test_connection_http_and_timeout_failures_do_not_escape(self):
         errors = [URLError("offline"), TimeoutError("slow UI"),

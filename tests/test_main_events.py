@@ -1,11 +1,13 @@
 from contextlib import redirect_stdout
 from io import StringIO
+import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import AsyncMock, patch
 
 import main
+from src.events import emit as actual_emit
 from src.metrics import Metrics
 
 
@@ -39,6 +41,12 @@ class OneTickFeed:
 
 
 class MainEventTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        # Lifecycle tests must never publish their fake ticks to a running UI.
+        emitter = patch.object(main, "emit")
+        emitter.start()
+        self.addCleanup(emitter.stop)
+
     async def run_one_tick(self, judgment):
         events = []
         with (patch.object(main, "USE_CREW", False),
@@ -62,6 +70,86 @@ class MainEventTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(metrics["facility_id"], "test-facility")
         self.assertNotIn("score", metrics)
         self.assertNotIn("score", [event["type"] for event in events])
+        self.assertEqual(metrics["total_tokens"], 0)
+        self.assertEqual(metrics["cost_usd"], 0)
+        self.assertEqual(metrics["agents_used"], 0)
+        self.assertEqual(metrics["llm_calls"], 0)
+        self.assertTrue(metrics["cost_complete"])
+        self.assertEqual(metrics["totals"]["ticks"], 1)
+        self.assertEqual(metrics["totals"]["total_tokens"], 0)
+
+    async def test_populated_model_usage_and_run_totals_reach_ui_metrics(self):
+        events = []
+        usage = {"prompt_tokens": 1000, "completion_tokens": 500, "requests": 2}
+        decision = {
+            "action": "observe", "sector": None, "rationale": "test", "assessments": [],
+            "source": "swarm", "agents_used": 3, "searches": 1,
+            "usage": {**usage, "by_model": {"parasail-glm-53-flash": usage}},
+        }
+        with (patch.object(main, "USE_CREW", False),
+              patch.object(main, "METRICS", Metrics()),
+              patch.object(main, "emit", side_effect=events.append),
+              patch.object(main, "decide_tick", new=AsyncMock(return_value=decision))):
+            await main.run_scenario(OneTickFeed({"score": 1.0}), "fixture", dry_run=False)
+
+        metrics = next(event for event in events if event["type"] == "metrics")
+        self.assertEqual(metrics["total_tokens"], 1500)
+        self.assertEqual(metrics["llm_calls"], 2)
+        self.assertAlmostEqual(metrics["cost_usd"], 0.0054)
+        self.assertEqual(metrics["searches"], 1)
+        self.assertEqual(metrics["agents_used"], 3)
+        self.assertTrue(metrics["cost_complete"])
+        self.assertTrue(metrics["within_budget"])
+        self.assertFalse(metrics["research_skipped"])
+        self.assertEqual(metrics["source"], "swarm")
+        self.assertEqual(metrics["by_model"], decision["usage"]["by_model"])
+        self.assertEqual(metrics["totals"]["total_tokens"], 1500)
+        self.assertEqual(metrics["totals"]["scored_ticks"], 1)
+
+    async def test_partial_or_fallback_usage_is_marked_incomplete(self):
+        for extra in ({"usage_complete": False}, {"cost_complete": False},
+                      {"source": "rule fallback (TimeoutError)"},
+                      {"source": "swarm (retry on parasail-minimax-m31-flash)"},
+                      {"usage": {"complete": False}}):
+            with self.subTest(extra=extra):
+                events = []
+                decision = {"action": "observe", "sector": None, "rationale": "test",
+                            "assessments": [], "source": "swarm", **extra}
+                with (patch.object(main, "USE_CREW", False),
+                      patch.object(main, "METRICS", Metrics()),
+                      patch.object(main, "emit", side_effect=events.append),
+                      patch.object(main, "decide_tick", new=AsyncMock(return_value=decision))):
+                    await main.run_scenario(OneTickFeed({"queued": True}), "fixture", dry_run=False)
+                metrics = next(event for event in events if event["type"] == "metrics")
+                self.assertFalse(metrics["cost_complete"])
+                self.assertFalse(metrics["totals"]["cost_complete"])
+
+    async def test_shared_emitter_adds_process_run_id_and_feed_mode(self):
+        tick, _ = await OneTickFeed({}).get_tick("fixture")
+        with TemporaryDirectory() as directory:
+            for fixture, dry_run, submit_fixture, mode in (
+                (True, True, False, "fixture"),
+                (True, True, True, "fixture"),
+                (True, False, True, "fixture-submit"),
+                (False, True, False, "live-dry-run"),
+                (False, False, False, "live"),
+            ):
+                feed = main.FixtureFeed() if fixture else OneTickFeed({"queued": True})
+                if fixture:
+                    feed.get_tick = AsyncMock(return_value=(tick, True))
+                    feed.submit = AsyncMock(return_value={"queued": True})
+                target = OneTickFeed({"queued": True}) if submit_fixture else None
+                with (self.subTest(mode=mode),
+                      patch.object(main, "USE_CREW", False),
+                      patch.object(main, "METRICS", Metrics()),
+                      patch.object(main, "QUEUE_FILE", Path(directory) / "pending.jsonl"),
+                      patch.object(main, "emit", actual_emit),
+                      patch("src.events.urlopen") as send):
+                    await main.run_scenario(feed, "fixture", dry_run=dry_run, submit_feed=target)
+                payloads = [json.loads(call.args[0].data) for call in send.call_args_list]
+                self.assertTrue(payloads)
+                self.assertEqual({event["run_id"] for event in payloads}, {f"{main.RUN_ID}:{mode}"})
+                self.assertEqual({event["run_mode"] for event in payloads}, {mode})
 
     async def test_score_event_contains_the_received_judgment_and_facility(self):
         events = await self.run_one_tick({

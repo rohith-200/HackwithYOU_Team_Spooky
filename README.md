@@ -82,6 +82,27 @@ cp .env.example .env        # then fill in your keys
 python main.py --crew       # run the swarm on the fixtures (nothing is submitted)
 ```
 
+### Dashboard and backend together
+
+Start the dashboard bridge from the repository root in one terminal:
+
+```bash
+python ui/server.py
+```
+
+Open http://localhost:8000/, then run `python main.py` in a second terminal
+for rule-only fixture processing, or `python main.py --crew` for the configured
+swarm. The dashboard automatically selects Backend when results arrive unless
+you explicitly selected Simulation. It shows the backend's measured per-tick
+tokens, estimated cost, latency, searches, and agent budget. Rule-only runs use
+zero model tokens and cost; fixture runs have no official score.
+
+The bridge retains the latest tick while it is running, so refreshing or
+opening the browser after a completed tick restores its metrics. Start the
+bridge before the backend; restarting the bridge clears that retained state.
+See [the UI setup instructions](ui/README.md) for Windows commands and the
+lightweight rule-only dependency setup.
+
 ### `.env`
 
 ```properties

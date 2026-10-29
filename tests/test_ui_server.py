@@ -65,6 +65,53 @@ class EventServerTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(browser.receive_json(), event)
 
+    def test_browser_opened_after_backend_run_receives_tick_and_metrics(self):
+        events = [
+            {"type": "tick_start", "tick_id": 142, "facility_id": "loft", "run_id": "run-a"},
+            {"type": "agent_log", "tick_id": 142, "agent": "sensor", "message": "Readings received"},
+            {"type": "decision", "tick_id": 142, "action": "evacuate"},
+            {"type": "metrics", "tick_id": 142, "total_tokens": 1840,
+             "cost_usd": 0.0032, "latency_s": 1.8, "agents_used": 5, "max_agents": 8},
+        ]
+        for event in events:
+            self.client.post("/emit", json=event)
+        for _ in range(2):  # Initial load and browser reconnect both restore it.
+            with self.client.websocket_connect("/ws") as browser:
+                self.assertEqual([browser.receive_json() for _ in events], events)
+
+    def test_non_string_event_type_remains_forwardable(self):
+        with self.client.websocket_connect("/ws") as browser:
+            event = {"type": [], "message": "Unknown schema"}
+            self.assertEqual(self.client.post("/emit", json=event).status_code, 200)
+            self.assertEqual(browser.receive_json(), event)
+
+    def test_replay_keeps_latest_metrics_and_new_run_can_restart_tick_numbers(self):
+        for event in (
+            {"type": "tick_start", "tick_id": 900, "run_id": "old"},
+            {"type": "metrics", "tick_id": 900, "run_id": "old", "total_tokens": 99},
+            {"type": "tick_start", "tick_id": 142, "run_id": "new"},
+            {"type": "metrics", "tick_id": 142, "run_id": "new", "total_tokens": 1},
+            {"type": "metrics", "tick_id": 142, "run_id": "new", "total_tokens": 2},
+            {"type": "metrics", "tick_id": 900, "run_id": "old", "total_tokens": 999},
+        ):
+            self.client.post("/emit", json=event)
+        with self.client.websocket_connect("/ws") as browser:
+            self.assertEqual(browser.receive_json(), {"type": "tick_start", "tick_id": 142, "run_id": "new"})
+            self.assertEqual(browser.receive_json(), {"type": "metrics", "tick_id": 142, "run_id": "new", "total_tokens": 2})
+
+    def test_late_previous_tick_metrics_do_not_replace_current_replay(self):
+        current = {"type": "tick_start", "tick_id": 143, "facility_id": "loft"}
+        metrics = {"type": "metrics", "tick_id": 143, "total_tokens": 0}
+        for event in (
+            {"type": "tick_start", "tick_id": 142, "facility_id": "loft"}, current, metrics,
+            {"type": "metrics", "tick_id": 142, "total_tokens": 99},
+            {"type": "tick_start", "tick_id": 142, "facility_id": "loft"},
+        ):
+            self.client.post("/emit", json=event)
+        with self.client.websocket_connect("/ws") as browser:
+            self.assertEqual(browser.receive_json(), current)
+            self.assertEqual(browser.receive_json(), metrics)
+
     def test_disconnected_browser_does_not_break_the_other_browser(self):
         with self.client.websocket_connect("/ws") as remaining:
             with self.client.websocket_connect("/ws"):
@@ -103,6 +150,17 @@ class EventServerTests(unittest.TestCase):
 
 
 class EventHubTests(unittest.IsolatedAsyncioTestCase):
+    async def test_replay_is_bounded_and_always_includes_tick_start(self):
+        hub = EventHub()
+        hub.publish({"type": "tick_start", "tick_id": 142})
+        for index in range(200):
+            hub.publish({"type": "agent_log", "tick_id": 142, "message": str(index)})
+        hub.publish({"type": "metrics", "tick_id": 142, "total_tokens": 200})
+        browser = hub.add(object())
+        self.assertEqual(browser.outbox.qsize(), 52)
+        self.assertEqual(json.loads(browser.outbox.get_nowait())["type"], "tick_start")
+        self.assertEqual(json.loads(browser.outbox.get_nowait())["message"], "150")
+
     async def test_full_queue_disconnects_only_the_slow_client(self):
         hub = EventHub()
         slow = hub.add(object())

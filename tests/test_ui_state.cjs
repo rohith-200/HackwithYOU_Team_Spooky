@@ -336,3 +336,75 @@ test('local demo data and received backend data remain independent mission insta
   assert.equal(backend.snapshot().totals.averageScore, 0.5);
   assert.deepEqual(backend.snapshot().rooms.map(room => room.id), ['server_room']);
 });
+
+test('new backend runs reset reused fixture IDs and retired runs cannot rewind them', async () => {
+  const mission = await state();
+  mission.ingest(start(142, [room('main_stage')], { run_id: 'first-run', run_mode: 'live' }));
+  mission.ingest({ type: 'score', tick_id: 142, run_id: 'first-run', score: 1 });
+  mission.ingest(start(900, [room('entrance')], { run_id: 'first-run' }));
+  mission.ingest(start(142, [room('catering_coffee_bar')], { run_id: 'second-run', run_mode: 'fixture' }));
+  let snapshot = mission.snapshot();
+  assert.equal(snapshot.runId, 'second-run');
+  assert.equal(snapshot.runMode, 'fixture');
+  assert.equal(snapshot.tickId, 142);
+  assert.equal(snapshot.tickCount, 1);
+  assert.equal(snapshot.isMock, false, 'fixture inputs do not imply fictional measured usage');
+  assert.deepEqual(snapshot.rooms.map(room => room.id), ['catering_coffee_bar']);
+  assert.deepEqual(snapshot.totals, { ticksScored: 0, averageScore: null, falseAlarms: 0 });
+  mission.ingest(start(900, [room('entrance')], { run_id: 'first-run', run_mode: 'live' }));
+  mission.ingest({ type: 'metrics', run_id: 'invalid-without-tick', total_tokens: 1000 });
+  assert.deepEqual(mission.snapshot(), snapshot);
+});
+
+test('backend metrics preserve measured zeros, pricing completeness and completed unscored ticks', async () => {
+  const mission = await state();
+  mission.ingest(start(142, [], { run_id: 'rules', run_mode: 'fixture', max_agents: 4 }));
+  mission.ingest({ type: 'decision', tick_id: 142, run_id: 'rules', action: 'observe' });
+  mission.ingest({ type: 'metrics', tick_id: 142, run_id: 'rules', run_mode: 'fixture',
+    total_tokens: 0, cost_usd: 0, latency_s: 0, agents_used: 0, searches: 0,
+    cost_complete: false, llm_calls: 0, source: 'rule' });
+  const snapshot = mission.snapshot();
+  assert.equal(snapshot.hasMetrics, true);
+  assert.equal(snapshot.score, null);
+  assert.equal(snapshot.metrics.total_tokens, 0);
+  assert.equal(snapshot.metrics.cost_usd, 0);
+  assert.equal(snapshot.metrics.latency_s, 0);
+  assert.equal(snapshot.metrics.agents_used, 0);
+  assert.equal(snapshot.metrics.searches, 0);
+  assert.equal(snapshot.metrics.cost_complete, false);
+  assert.equal(snapshot.maxAgents, 4);
+});
+
+test('full backend totals survive late joins, tick changes and late older metrics', async () => {
+  const mission = await state();
+  mission.ingest(start(900, [], { run_id: 'late-join', run_mode: 'live' }));
+  mission.ingest({ type: 'score', tick_id: 900, run_id: 'late-join', score: 1 });
+  mission.ingest({ type: 'metrics', tick_id: 900, run_id: 'late-join',
+    totals: { scored_ticks: 8, avg_score: 0.75, false_alarms: 2, ticks: 9 } });
+  assert.deepEqual(mission.snapshot().totals, { ticksScored: 8, averageScore: 0.75, falseAlarms: 2 });
+  mission.ingest(start(901, [], { run_id: 'late-join' }));
+  mission.ingest({ type: 'metrics', tick_id: 900, run_id: 'late-join',
+    totals: { scored_ticks: 1, avg_score: 1, false_alarms: 0 } });
+  assert.deepEqual(mission.snapshot().totals, { ticksScored: 8, averageScore: 0.75, falseAlarms: 2 });
+  mission.ingest({ type: 'metrics', tick_id: 901, run_id: 'late-join',
+    totals: { scored_ticks: 9, avg_score: 0.78, false_alarms: 2 } });
+  assert.deepEqual(mission.snapshot().totals, { ticksScored: 9, averageScore: 0.78, falseAlarms: 2 });
+  mission.ingest(start(142, [], { run_id: 'fresh-fixtures', run_mode: 'fixture' }));
+  mission.ingest({ type: 'metrics', tick_id: 142, run_id: 'fresh-fixtures',
+    totals: { scored_ticks: 0, avg_score: null, false_alarms: 0 } });
+  assert.deepEqual(mission.snapshot().totals, { ticksScored: 0, averageScore: null, falseAlarms: 0 });
+});
+
+test('backend auto-selection respects an explicit simulation choice and retired runs', async () => {
+  const { shouldSelectBackend } = await modulePromise;
+  const mission = await state();
+  assert.equal(shouldSelectBackend({ type: 'tick_start' }, mission.snapshot()), false);
+  const event = start(1, [], { run_id: 'current', run_mode: 'fixture' });
+  mission.ingest(event);
+  assert.equal(shouldSelectBackend(event, mission.snapshot()), true);
+  assert.equal(shouldSelectBackend(event, mission.snapshot(), true), false);
+  assert.equal(shouldSelectBackend({ type: 'metrics', run_id: 'current' }, mission.snapshot()), true);
+  assert.equal(shouldSelectBackend({ type: 'metrics', run_id: 'retired' }, mission.snapshot()), false);
+  assert.equal(shouldSelectBackend({ type: 'future_event' }, mission.snapshot()), false);
+  assert.equal(shouldSelectBackend(null, mission.snapshot()), false);
+});

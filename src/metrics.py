@@ -67,11 +67,12 @@ class Metrics:
             self.cur["one_actions"] += n or 0
 
     def end_tick(self, action, score=None, false_alarm=None, escalated=False,
-                 agents_used=0, research_skipped=False, source="") -> dict:
+                 agents_used=0, research_skipped=False, source="", usage_complete=True) -> dict:
+        """Finish a tick; flag costs when provider usage could not be counted fully."""
         c, self.cur = self.cur, None
         c["latency_s"] = round(time.perf_counter() - c.pop("t0"), 2)
 
-        llm_cost, priced = 0.0, True
+        llm_cost, priced = 0.0, bool(usage_complete)
         if c["by_model"]:
             for model, u in c["by_model"].items():
                 cost, known = _model_cost(model, u["prompt_tokens"], u["completion_tokens"])
@@ -84,7 +85,8 @@ class Metrics:
                  agents_used=agents_used, research_skipped=bool(research_skipped), source=source,
                  total_tokens=c["prompt_tokens"] + c["completion_tokens"],
                  cost_usd=round(llm_cost + c["searches"] * YDC_SEARCH_USD, 5),
-                 cost_complete=priced, within_budget=agents_used <= (c["max_agents"] or 99))
+                 cost_complete=priced,
+                 within_budget=agents_used <= (c["max_agents"] if c["max_agents"] is not None else 99))
         self.ticks.append(c)
         self._print_tick(c)
         return c
@@ -137,7 +139,7 @@ class Metrics:
         s = self.totals()
         if not s["ticks"]:
             return s
-        star = "" if s["cost_complete"] else "  (* some model prices unknown, counted as $0)"
+        star = "" if s["cost_complete"] else "  (* excludes untracked usage or unknown model prices)"
         print("\n================ WATCHTOWER METRICS ================")
         print(f"Ticks handled        {s['ticks']}  (scored: {s['scored_ticks']})")
         if s["avg_score"] is not None:
