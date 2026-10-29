@@ -145,6 +145,12 @@ For CrewAI analysis, install `requirements.txt`, set `PARASAIL_API_KEY` in
 `YDC_API_KEY` is optional and is used only if the CrewAI path performs live
 research. Do not paste credentials into chat or commit `.env`.
 
+Both inspection commands stream their decision and measured usage to the
+running dashboard. Each inspects one ticket without writing a pending
+submission, posting to Discord, or creating an official score. CrewAI cost is
+marked as a partial estimate because embeddings and some tool calls are not
+fully tracked.
+
 ### Run modes
 
 | Command | What it does |
