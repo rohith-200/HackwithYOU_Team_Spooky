@@ -6,3 +6,4 @@ metrics.json
 .env.*
 !.env.example
 pending_submissions.jsonl
+manual_alerts.txt

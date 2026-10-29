@@ -23,11 +23,17 @@ const MAP_AREA_ALIASES = new Map([
   ['entry', 'entrance'],
   ['main_entrance', 'entrance'],
 ]);
+const MAP_AREA_SLOTS = new Map([['main', 0], ['cafeteria', 1], ['entrance', 2]]);
 
 export function mapAreaForSector(value) {
   if (typeof value !== 'string') return null;
   const identifier = value.toLowerCase().trim().replace(/[\s-]+/g, '_').replace(/_+/g, '_');
   return MAP_AREA_ALIASES.get(identifier) ?? null;
+}
+
+export function mapSlotForSector(value) {
+  const area = mapAreaForSector(value);
+  return area === null ? null : MAP_AREA_SLOTS.get(area) ?? null;
 }
 
 function object(value) {

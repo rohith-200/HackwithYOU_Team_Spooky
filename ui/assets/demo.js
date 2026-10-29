@@ -188,7 +188,7 @@ export function getDemoSequence(scenario = "breach") {
   }
 
   const action = name === "unknown" ? "contain" : "evacuate";
-  report("dispatcher", "Simulating the approved escalation locally. One and Discord are not contacted.");
+  report("dispatcher", "Simulating the approved escalation locally. No external services are contacted.");
   add("dispatch", {
     sector,
     content: `[DEMO — NOT SENT] Tick ${tickId}: ${action.toUpperCase()} ${sector}. ${name === "breach" ? "Four civilians reported pinned." : "Civilian status clear; fictional sector."} Simulated delivery only.`,

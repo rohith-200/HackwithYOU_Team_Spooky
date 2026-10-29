@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/three/OrbitControls.js';
-import { mapAreaForSector } from './state.js';
+import { mapAreaForSector, mapSlotForSector } from './state.js';
 
 // Positions are fixed schematic areas, never coordinates of the actual venue.
 const PALETTE = {
@@ -378,9 +378,10 @@ export class SectorScene {
     const next = new Map();
     entries.forEach((raw, index) => {
       const id = String(raw.id ?? raw.sector ?? `sector_${index}`);
-      if (!mapAreaForSector(id)) return;
-      const prior = this.rooms.get(id);
-      const slot = Number.isInteger(raw.slot) && raw.slot >= 0 ? raw.slot : prior?.slot ?? index;
+      const area = mapAreaForSector(id);
+      if (!area) return;
+      const slot = mapSlotForSector(id);
+      if (slot === null) return;
       next.set(id, { ...raw, id, slot, label: String(raw.label || id.replaceAll('_', ' ')), status: PALETTE[raw.status] ? raw.status : 'unknown' });
     });
     this.rooms = next;
@@ -410,11 +411,11 @@ export class SectorScene {
       item.glow.color.set(PALETTE[room.status]);
       item.glow.opacity = room.status === 'breached' ? 0.18 : room.status === 'hot' ? 0.12 : 0.045;
       item.beacon.visible = room.status === 'breached' || room.status === 'hot';
-      item.name.textContent = room.label;
+      item.name.textContent = room.id;
       item.status.textContent = STATE_LABEL[room.status];
       item.label.dataset.state = room.status;
       item.label.className = `room-label is-${room.status}`;
-      item.label.title = `${room.label}: ${STATE_LABEL[room.status]}. Select sector.`;
+      item.label.title = `${room.id}: ${STATE_LABEL[room.status]}. Select sector.`;
       item.label.style.setProperty('--room-accent', PALETTE[room.status]);
       item.group.traverse((object) => {
         if (object.material && object.material === item.light) object.material.opacity = room.status === 'stale' ? 0.4 : 1;

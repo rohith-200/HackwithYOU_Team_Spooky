@@ -45,12 +45,16 @@ test('normalized events preserve exact IDs, zero readings and explicit nulls', a
   assert.deepEqual(snapshot.metrics, { max_agents: 8, credits: 45000 });
 });
 
-test('only the three named map areas resolve; unknown sector decisions and scores remain available', async () => {
-  const { MissionState, mapAreaForSector } = await modulePromise;
+test('only the three mapped sectors resolve; unknown sector judgments remain in mission state', async () => {
+  const { MissionState, mapAreaForSector, mapSlotForSector } = await modulePromise;
   assert.equal(mapAreaForSector('main_stage'), 'main');
   assert.equal(mapAreaForSector('catering_coffee_bar'), 'cafeteria');
   assert.equal(mapAreaForSector('entrance'), 'entrance');
   assert.equal(mapAreaForSector('archive_annex'), null);
+  assert.equal(mapSlotForSector('main_stage'), 0);
+  assert.equal(mapSlotForSector('catering_coffee_bar'), 1);
+  assert.equal(mapSlotForSector('entrance'), 2);
+  assert.equal(mapSlotForSector('archive_annex'), null);
 
   const mission = new MissionState();
   mission.ingest(start(7, [room('archive_annex', { emf: 76 })]));
@@ -120,6 +124,17 @@ test('a decision, score and dispatch never invent containment success or civilia
   mission.ingest({ type: 'score', tick_id: 1, score: 1, expected_action: 'evacuate' });
   mission.ingest({ type: 'dispatch', tick_id: 1, ok: true, content: 'Evacuate coffee' });
   assert.deepEqual(mission.snapshot().rooms, before);
+});
+
+test('dispatch keeps a draft distinct from a sent alert', async () => {
+  const mission = await state();
+  mission.ingest(start(1, []));
+  const drafted = { type: 'dispatch', tick_id: 1, status: 'drafted', content: 'Alert text' };
+  mission.ingest(drafted);
+  assert.deepEqual(mission.snapshot().dispatch, drafted);
+  mission.ingest({ ...drafted, status: 'sent', ok: true });
+  assert.equal(mission.snapshot().dispatch.status, 'sent');
+  assert.equal(mission.snapshot().dispatch.ok, true);
 });
 
 test('tick changes reset active findings; late agent and score events cannot rewind active state', async () => {
@@ -286,8 +301,9 @@ test('all demo scenarios finish through the same reducer without changing report
   }
 });
 
-test('unknown-sector demo adds its module through real tick data and keeps all initial slots', async () => {
+test('unknown-sector demo keeps its readings and score data without mapping the sector', async () => {
   const { getDemoPreview, getDemoSequence } = await demoPromise;
+  const { mapAreaForSector } = await modulePromise;
   const mission = await state();
   mission.ingest(getDemoPreview('unknown'));
   const initialSlots = mission.snapshot().rooms.map(room => [room.id, room.slot]);
@@ -299,6 +315,11 @@ test('unknown-sector demo adds its module through real tick data and keeps all i
   assert.equal(annex.slot, 3);
   assert.equal(annex.status, 'breached');
   assert.equal(annex.emf, 76);
+  assert.equal(mapAreaForSector(annex.id), null);
+  mission.ingest({ type: 'decision', tick_id: 218, sector: annex.id, action: 'contain' });
+  mission.ingest({ type: 'score', tick_id: 218, score: 1 });
+  assert.equal(mission.snapshot().decision.sector, 'archive_annex');
+  assert.equal(mission.snapshot().score.score, 1);
 });
 
 test('local demo data and received backend data remain independent mission instances', async () => {
