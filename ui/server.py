@@ -97,7 +97,8 @@ def create_app() -> FastAPI:
         try:
             done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             for task in done:
-                task.result()
+                if not task.cancelled():
+                    task.result()
         except (WebSocketDisconnect, OSError, RuntimeError):
             pass
         finally:

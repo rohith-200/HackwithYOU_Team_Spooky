@@ -5,7 +5,7 @@ metrics.py: tokens, cost, speed and quality per tick for the Watchtower swarm (C
     m.start_tick(tick_id, n_sectors, max_agents)
     m.add_usage(decision["usage"])        # swarm usage dict (has by_model)
     m.add_search(decision["searches"])    # You.com searches
-    m.add_one_action()                    # each Discord dispatch via One
+    m.add_one_action()                    # each explicitly enabled Discord dispatch
     row = m.end_tick(action=..., score=..., false_alarm=..., escalated=..., agents_used=..., ...)
     m.summary(); m.save("metrics.json")
 """

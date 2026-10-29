@@ -245,7 +245,7 @@ def commander_task(agent, context):
 def dispatch_task(agent, context):
     return Task(description="Write ONE sentence, under 160 characters: entity, key sensor numbers, "
                             "civilian situation. No team name, no orders, no extra sentences.",
-                expected_output="One alert line.", agent=agent, context=context,
+                expected_output="A single-line incident alert.", agent=agent, context=context,
                 output_pydantic=DispatchDraft)
 
 
@@ -410,7 +410,8 @@ class WatchtowerFlow(Flow):
 
         for name, rep in (("sensor", sensor), ("civilian", civ), ("lore", lore), ("commander", cmd)):
             if rep is not None:
-                ui({"type": "agent_log", "tick_id": tid, "agent": name, "sector": None,
+                ui({"type": "agent_log", "tick_id": tid, "facility_id": tick.get("facility_id"),
+                    "agent": name, "sector": None,
                     "message": rep.model_dump_json()[:400]})
 
         # decision table on the agents' findings
@@ -454,7 +455,8 @@ class WatchtowerFlow(Flow):
                     "lore_sources": (lore.sources if lore and lore.sources else self.state.get("search_urls", [])),
                     "searches": self.state.get("searches", 0),
                     "triage": {sec.get("sector"): triage_info(sec) for sec in tick.get("sector_reports", [])}}
-        ui({"type": "decision", "tick_id": tid, "action": action, "sector": sector,
+        ui({"type": "decision", "tick_id": tid, "facility_id": tick.get("facility_id"),
+            "action": action, "sector": sector,
             "rationale": rationale})
         return decision
 

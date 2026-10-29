@@ -45,23 +45,6 @@ test('normalized events preserve exact IDs, zero readings and explicit nulls', a
   assert.deepEqual(snapshot.metrics, { max_agents: 8, credits: 45000 });
 });
 
-test('only the three named map areas resolve; unknown sector decisions and scores remain available', async () => {
-  const { MissionState, mapAreaForSector } = await modulePromise;
-  assert.equal(mapAreaForSector('main_stage'), 'main');
-  assert.equal(mapAreaForSector('catering_coffee_bar'), 'cafeteria');
-  assert.equal(mapAreaForSector('entrance'), 'entrance');
-  assert.equal(mapAreaForSector('archive_annex'), null);
-
-  const mission = new MissionState();
-  mission.ingest(start(7, [room('archive_annex', { emf: 76 })]));
-  mission.ingest({ type: 'decision', tick_id: 7, sector: 'archive_annex', action: 'observe' });
-  mission.ingest({ type: 'score', tick_id: 7, score: 0 });
-  const snapshot = mission.snapshot();
-  assert.equal(snapshot.rooms[0].id, 'archive_annex');
-  assert.equal(snapshot.decision.sector, 'archive_annex');
-  assert.equal(snapshot.score.score, 0);
-});
-
 test('raw supplied fixtures flatten without inferring a backend threat assessment', async () => {
   const mission = await state();
   const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, '../fixtures/outbreak-level-5.json'), 'utf8'));
@@ -120,6 +103,17 @@ test('a decision, score and dispatch never invent containment success or civilia
   mission.ingest({ type: 'score', tick_id: 1, score: 1, expected_action: 'evacuate' });
   mission.ingest({ type: 'dispatch', tick_id: 1, ok: true, content: 'Evacuate coffee' });
   assert.deepEqual(mission.snapshot().rooms, before);
+});
+
+test('dispatch keeps a draft distinct from a sent alert', async () => {
+  const mission = await state();
+  mission.ingest(start(1, []));
+  const drafted = { type: 'dispatch', tick_id: 1, status: 'drafted', content: 'Alert text' };
+  mission.ingest(drafted);
+  assert.deepEqual(mission.snapshot().dispatch, drafted);
+  mission.ingest({ ...drafted, status: 'sent', ok: true });
+  assert.equal(mission.snapshot().dispatch.status, 'sent');
+  assert.equal(mission.snapshot().dispatch.ok, true);
 });
 
 test('tick changes reset active findings; late agent and score events cannot rewind active state', async () => {

@@ -3,9 +3,9 @@
 **Hack with YOU: Halloween Edition · Track 1: The Exorcism Protocol**
 AWS Builder Loft, San Francisco · October 28, 2026
 
-Watchtower is a supervised AI incident response platform for a live facility simulation. For every incident tick it triages each sector, sends a team of agents with **partial knowledge** to analyze it, decides **contain / evacuate / observe**, submits the decision to the scenario scoreboard, raises a Discord alert only when two agents agree it is serious, and records tokens, cost and latency for every tick.
+Watchtower is a supervised AI agent swarm that contains a paranormal outbreak in a live facility simulation. For every incident tick it triages each sector, sends a team of agents with **partial knowledge** to analyze it, and decides **contain / evacuate / observe**. Live runs submit decisions to the scenario scoreboard; Discord alerts are sent only when explicitly enabled. The system records tokens, cost and latency for every tick.
 
-Built with **CrewAI** · **Parasail** · **You.com** · **One** · venue by AWS
+Built with **CrewAI** · **Parasail** · **You.com** · **Discord webhooks** · venue by AWS
 
 ---
 
@@ -27,7 +27,7 @@ flowchart TD
     DSP --> FIN[Finalize<br/>decision table + rule guard + two-key check]
     CCMD --> FIN
     FIN --> SUB[Submit to scoreboard<br/>hack26-submit-containment]
-    FIN --> DIS[Discord #loft-incident<br/>via One, hot ticks only]
+    FIN --> DIS[Discord webhook<br/>explicitly opted in]
     FIN --> MET[Metrics + live UI events]
 ```
 
@@ -38,7 +38,7 @@ flowchart TD
    - **Civilian Officer** sees civilian status and containment state.
    - **Lore Researcher** sees only the entity class, plus live You.com evidence with source URLs.
 4. **Decide.** The Commander chooses an action from the team's reports. The agents' structured findings go through a fixed decision table (people at risk in a hot sector → evacuate; hot with no one at risk → contain; nothing hot → observe), and a deterministic rule guards against disagreement to prevent false alarms.
-5. **Act.** Every tick is submitted to the scoreboard. A Discord alert is drafted only when the Sensor Analyst says the sector is hot **and** the Commander marks it serious (two-key check).
+5. **Act.** In submission modes, decisions go to the scoreboard. A Discord alert is drafted only when the Sensor Analyst says the sector is hot **and** the Commander marks it serious (two-key check); sending requires the explicit `--send-discord` option.
 6. **Measure.** Tokens and cost per model, You.com searches, latency, agents used vs. budget, score and false alarms are printed per tick, streamed to the UI and saved to `metrics.json`.
 
 ## How each partner is used
@@ -48,7 +48,7 @@ flowchart TD
 | **CrewAI** | The swarm: a Flow with a router (`triage → hot/calm → finalize`), 5 role-based agents, parallel tasks, structured Pydantic outputs |
 | **Parasail** | Every agent's model (three models split by job), schema-locked JSON for the backup Commander, and embeddings for sector triage |
 | **You.com** | Live web grounding for the Lore Researcher: a guaranteed search per hot tick plus a search tool the agent can call, with cited source URLs |
-| **One** | Real action: posts the incident alert to the venue's `#loft-incident` Discord channel (`src/tools/one_discord.py`) |
+| **Discord webhook** | Posts a drafted incident alert only when explicitly enabled with `--send-discord`; configure `DISCORD_WEBHOOK_URL` in `.env` |
 
 ## Agents and models
 
@@ -88,13 +88,12 @@ python main.py --crew       # run the swarm on the fixtures (nothing is submitte
 # keys
 YDC_API_KEY=
 PARASAIL_API_KEY=
-ONE_API_KEY=
+DISCORD_WEBHOOK_URL=
 
 # event
 TEAM_HANDLE=team-spooky
 TEAM_TOKEN=
 SCENARIO_MCP=https://api.you.com/mcp/halloween-hack-26
-DISCORD_CHANNEL_ID=1564842098740695100
 UI_URL=http://localhost:8000
 
 # Parasail
@@ -111,6 +110,20 @@ CREWAI_TRACING_ENABLED=false
 
 Never commit `.env`.
 
+For a **read-only live-ticket check**, copy the team handle and any issued
+`TEAM_TOKEN` into `.env`. Run the rules-only check first; it fetches and analyzes
+one ticket without submitting a decision or sending an alert:
+
+```bash
+.\.venv\Scripts\python.exe -m scripts.test_live_ticket
+```
+
+For CrewAI analysis, install `requirements.txt`, set `PARASAIL_API_KEY` in
+`.env`, then run
+`.\.venv\Scripts\python.exe -m scripts.test_live_ticket --crew`.
+`YDC_API_KEY` is optional and is used only if the CrewAI path performs live
+research. Do not paste credentials into chat or commit `.env`.
+
 ### Run modes
 
 | Command | What it does |
@@ -122,7 +135,19 @@ Never commit `.env`.
 | `python main.py --crew --live` | Swarm on live ticks, submitting each decision |
 | `python main.py --crew --submit-fixtures` | Swarm on the fixture ticks, submitting to the live scoreboard |
 
+Discord sending is **off by default**. Add `--send-discord` to explicitly enable
+alerts, and only use it when the run is intentionally submitting decisions.
+The read-only `scripts.test_live_ticket` command never sends alerts, regardless
+of `.env` contents.
+To send one explicit test message without contacting the scenario feed or
+submitting a scoreboard decision, run `python main.py --test-discord`. This
+does post a real message to the configured webhook.
+
 The scoreboard accepts **one answer per tick**, so the first submission is final.
+Append `--send-discord` to a submission mode only when you explicitly want
+Discord alerts. For example, `python main.py --crew --live --send-discord`
+submits live decisions and sends qualifying alerts. Dry runs and duplicate
+judgments never send alerts.
 
 Useful checks:
 
