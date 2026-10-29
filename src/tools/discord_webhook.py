@@ -2,7 +2,7 @@
 
 import asyncio
 import os
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 from dotenv import load_dotenv
@@ -53,11 +53,22 @@ def _retry_after(response: httpx.Response) -> float:
         return 1.0
 
 
+def _is_message_id(value) -> bool:
+    return (isinstance(value, str) and 1 <= len(value) <= 20 and value.isascii()
+            and value.isdigit() and int(value) > 0)
+
+
 async def post_alert(content: str, retries: int = 2) -> bool:
-    """Post one message, returning False with an explicit diagnostic on failure."""
+    """Post one message and require Discord's confirmed message receipt."""
     url = _webhook_url()
     if url is None:
         return False
+
+    parsed = urlsplit(url)
+    query = [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+             if key.casefold() != "wait"]
+    query.append(("wait", "true"))
+    url = urlunsplit(parsed._replace(query=urlencode(query)))
 
     payload = {
         "content": content[:MAX_LEN],
@@ -75,8 +86,23 @@ async def post_alert(content: str, retries: int = 2) -> bool:
                 print(f"  Discord: request failed ({type(error).__name__})")
                 return False
 
-            if response.status_code in (200, 204):
+            if response.status_code == 200:
+                try:
+                    receipt = response.json()
+                except (ValueError, TypeError):
+                    receipt = None
+                if (not isinstance(receipt, dict) or not _is_message_id(receipt.get("id"))
+                        or not _is_message_id(receipt.get("channel_id"))):
+                    print("  Discord: no valid message receipt; delivery could not be confirmed")
+                    return False
+                print(f"  Discord: confirmed message {receipt['id']} in channel {receipt['channel_id']}")
+                if _is_message_id(receipt.get("guild_id")):
+                    print(f"  Discord message: https://discord.com/channels/{receipt['guild_id']}/"
+                          f"{receipt['channel_id']}/{receipt['id']}")
                 return True
+            if response.status_code == 204:
+                print("  Discord: HTTP 204 without a message receipt; delivery could not be confirmed")
+                return False
             if response.status_code == 429 and attempt + 1 < attempts:
                 await asyncio.sleep(_retry_after(response))
                 continue
