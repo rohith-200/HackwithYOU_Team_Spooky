@@ -126,12 +126,17 @@ def print_judgment(j: dict):
           f"false_alarm={j.get('false_alarm')}{dup}")
 
 
-async def run_scenario(feed, scenario: str, dry_run: bool, submit_feed=None):
+async def run_scenario(feed, scenario: str, dry_run: bool, submit_feed=None,
+                       max_ticks: int = MAX_TICKS_PER_SCENARIO):
     print(f"\n===== scenario: {scenario} =====")
     seen = set()
-    for _ in range(MAX_TICKS_PER_SCENARIO):
+    last_exhausted = False
+    for _ in range(min(MAX_TICKS_PER_SCENARIO, max_ticks)):
         tick, exhausted = await feed.get_tick(scenario)
         tick_id = tick.get("tick_id")
+        if exhausted:
+            last_exhausted = True
+            break
         if tick_id in seen:  # exhausted feed repeats the last tick
             break
         seen.add(tick_id)
@@ -164,7 +169,9 @@ async def run_scenario(feed, scenario: str, dry_run: bool, submit_feed=None):
                 and judgment.get("ok") is not False
                 and not judgment.get("error")
             )
-            can_send = SEND_DISCORD and submitted
+            can_send = SEND_DISCORD and (
+                submitted or (dry_run and "--worker" in sys.argv)
+            )
             if can_send:
                 await send_alert(tick, decision["alert"])
             else:
@@ -196,8 +203,26 @@ async def run_scenario(feed, scenario: str, dry_run: bool, submit_feed=None):
             "agents_used": row["agents_used"], "max_agents": row["max_agents"],
             "searches": row["searches"]})
 
-        if exhausted:
-            break
+    return last_exhausted
+
+
+async def backend_worker():
+    """Wait for UI triggers and process exactly one fixture tick per trigger."""
+    async with FixtureFeed() as feed:
+        scenario_index = 0
+        while scenario_index < len(SCENARIOS):
+            trigger = await asyncio.to_thread(sys.stdin.readline)
+            if not trigger:
+                return
+            while scenario_index < len(SCENARIOS):
+                exhausted = await run_scenario(
+                    feed, SCENARIOS[scenario_index], dry_run=True, max_ticks=1
+                )
+                if not exhausted:
+                    break
+                scenario_index += 1
+            if scenario_index >= len(SCENARIOS):
+                return
 
 
 async def replay(feed):
@@ -223,6 +248,10 @@ async def main():
 
     if "--test-discord" in sys.argv:
         await test_discord()
+        return
+
+    if "--worker" in sys.argv:
+        await backend_worker()
         return
 
     if "--submit-fixtures" in sys.argv:  # live ticks == fixtures; cursor already exhausted

@@ -94,7 +94,20 @@
     }
     async function runDemo(){if(source!=='demo')return;if(running){generation++;running=false;render();return;}const token=++generation;running=true;demoModel=new MissionState();demoModel.ingest(getDemoPreview($('scenario').value));render();beep();for(const{delay,event}of getDemoSequence($('scenario').value)){await new Promise(resolve=>setTimeout(resolve,Math.max(0,delay)));if(token!==generation)return;demoModel.ingest(event);if(event.type==='decision'&&event.sector)selected=event.sector;if(source==='demo')render();if(event.type==='decision'){if(source==='demo'&&event.sector)scene.focus(event.sector);beep(740);text('announcement',`Simulated decision: ${event.action}`);}}if(token===generation){running=false;render();text('announcement','Simulation complete. Scores and dispatches are simulated.');}}
     function setSource(next){if(next!==source){generation++;running=false;}source=next;selected=null;render();scene.overview();beep(480);}
-    $('run').addEventListener('click',runDemo);$('quick-run').addEventListener('click',runDemo);$('demo-source').addEventListener('click',()=>setSource('demo'));$('live-source').addEventListener('click',()=>setSource('live'));
+    async function startBackend(){
+      setSource('live');
+      text('run-hint','Starting CrewAI backend…');
+      try{
+        const response=await fetch('/run',{method:'POST'});
+        const result=await response.json();
+        if(!response.ok||!result.ok)throw new Error(result.detail||'Backend could not start');
+        text('run-hint',result.started?'Backend started. Waiting for incident events…':'Backend is already running. Waiting for incident events…');
+      }catch(error){
+        text('run-hint',`Backend start failed: ${error.message}`);
+        console.error('Could not start backend',error);
+      }
+    }
+    $('run').addEventListener('click',runDemo);$('quick-run').addEventListener('click',runDemo);$('demo-source').addEventListener('click',()=>setSource('demo'));$('live-source').addEventListener('click',startBackend);
     $('scenario').addEventListener('change',()=>{generation++;running=false;demoModel=new MissionState();demoModel.ingest(getDemoPreview($('scenario').value));selected=null;render();scene.overview();});
     $('iso').addEventListener('click',()=>{scene.setView('iso');$('iso').setAttribute('aria-pressed','true');$('top').setAttribute('aria-pressed','false');});$('top').addEventListener('click',()=>{scene.setView('top');$('iso').setAttribute('aria-pressed','false');$('top').setAttribute('aria-pressed','true');});
     $('zoom-in').addEventListener('click',()=>scene.zoom(.82));$('zoom-out').addEventListener('click',()=>scene.zoom(1.22));$('overview').addEventListener('click',()=>scene.overview());$('focus').addEventListener('click',()=>selected&&scene.focus(selected));
