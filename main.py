@@ -35,23 +35,6 @@ MANUAL_ALERTS = "manual_alerts.txt"
 METRICS = Metrics()
 
 
-async def send_alert(tick_id, alert: str) -> bool:
-    """Post an alert via the Discord webhook; on failure, fall back to manual posting."""
-    if _DISPATCH_IMPORT_ERROR:
-        print(f"  dispatcher not available ({_DISPATCH_IMPORT_ERROR})")
-    ok = await post_alert(alert)
-    ui({"type": "dispatch", "tick_id": tick_id, "content": alert, "ok": ok, "manual": not ok})
-    if ok:
-        print("  DISCORD: posted to #loft-incident")
-        return True
-    with open(MANUAL_ALERTS, "a") as f:
-        f.write(alert + "\n")
-    bar = "!" * 70
-    print(f"  {bar}\n  MANUAL FALLBACK: post this in #loft-incident now (saved to {MANUAL_ALERTS}):\n"
-          f"  {alert}\n  {bar}")
-    return False
-
-
 def ui(event: dict):
     try:
         emit(event)
