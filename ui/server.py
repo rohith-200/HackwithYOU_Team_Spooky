@@ -94,8 +94,11 @@ def create_app() -> FastAPI:
             asyncio.create_task(wait_for_disconnect(socket)),
             asyncio.create_task(connection.overloaded.wait()),
         ]
+        disconnect_task = tasks[1]
+        disconnected = False
         try:
             done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            disconnected = disconnect_task in done and not disconnect_task.cancelled()
             for task in done:
                 if not task.cancelled():
                     task.result()
@@ -106,11 +109,12 @@ def create_app() -> FastAPI:
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
-            with suppress(Exception):
-                await asyncio.wait_for(
-                    socket.close(code=1013 if connection.overloaded.is_set() else 1000),
-                    timeout=0.2,
-                )
+            if not disconnected:
+                with suppress(Exception):
+                    await asyncio.wait_for(
+                        socket.close(code=1013 if connection.overloaded.is_set() else 1000),
+                        timeout=0.2,
+                    )
 
     return application
 

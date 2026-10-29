@@ -1,36 +1,75 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/three/OrbitControls.js';
+import { mapAreaForSector, mapSlotForSector } from './state.js';
 
-// Positions are stable schematic slots, never coordinates of the actual venue.
+// Positions are fixed schematic areas, never coordinates of the actual venue.
 const PALETTE = {
-  breached: '#ff754b', hot: '#d9af70', secure: '#b5f18c',
-  unknown: '#9a92b5', stale: '#718288',
+  breached: '#ff754b', hot: '#e5a84e', secure: '#b7c779',
+  unknown: '#b49bcf', stale: '#82909a',
 };
 const STATE_LABEL = {
   breached: 'BREACH', hot: 'ANOMALY', secure: 'HOLDING',
   unknown: 'UNVERIFIED', stale: 'NOT UPDATED',
 };
-const SLOT_X = 5.35;
-const SLOT_Z = 4.55;
+const AREA_LAYOUT = {
+  main: { position: [-6.85, 0, -1.1], rotation: Math.PI / 2, hit: [5.2, 1.1, 1.9], labelOffset: [0, 0.23, 0.9] },
+  cafeteria: { position: [5.2, 0, -3.2], hit: [3.1, 1.1, 4.8] },
+  entrance: { position: [-4.7, 0, -1.05], hit: [1.75, 1.1, 4.6] },
+};
 
-function positionForSlot(slot) {
-  return new THREE.Vector3((slot % 3 - 1) * SLOT_X, 0, Math.floor(slot / 3) * SLOT_Z - SLOT_Z / 2);
+const MAP_REGIONS = [
+  {
+    area: 'main',
+    color: '#6724ce',
+    points: [[-8, -6], [3.2, -6], [3.2, -3.7], [-5.7, -3.7], [-5.7, 1.5], [-8, 1.5]],
+  },
+  {
+    area: 'cafeteria',
+    color: '#122f78',
+    points: [[3.2, -6], [6.8, -6], [6.8, -0.5], [4.4, -0.5], [4.4, -2.2], [3.2, -2.2]],
+  },
+  {
+    area: 'entrance',
+    color: '#08a995',
+    points: [[-5.7, -3.7], [-3.7, -3.7], [-3.7, 1.5], [-5.7, 1.5]],
+  },
+  {
+    area: 'entrance',
+    color: '#08a995',
+    points: [[-3.7, 1.5], [1.2, 1.5], [1.2, 2.8], [-3.7, 2.8]],
+  },
+  {
+    area: 'unknown',
+    color: '#10295f',
+    points: [[-3.7, -3.7], [3.2, -3.7], [3.2, -2.2], [4.4, -2.2], [4.4, -0.5], [6.8, -0.5], [6.8, 1.5], [1.2, 1.5], [-3.7, 1.5]],
+  },
+  {
+    area: 'unknown',
+    color: '#9a7b42',
+    points: [[-8, 1.5], [-5.7, 1.5], [-5.7, 2.8], [-3.7, 2.8], [1.2, 2.8], [1.2, 1.5], [5.2, 1.5], [5.2, 5.2], [-8, 5.2]],
+  },
+  {
+    area: 'unknown',
+    color: '#1763d0',
+    points: [[5.2, 1.5], [6.8, 1.5], [6.8, 5.2], [5.2, 5.2]],
+  },
+];
+
+function extrudedFootprint(points, thickness) {
+  const shape = new THREE.Shape();
+  points.forEach(([x, z], index) => {
+    if (index === 0) shape.moveTo(x, -z);
+    else shape.lineTo(x, -z);
+  });
+  shape.closePath();
+  const geometry = new THREE.ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false });
+  geometry.rotateX(-Math.PI / 2);
+  return geometry;
 }
 
-function chamferedShape(width, depth, corner = 0.26) {
-  const shape = new THREE.Shape();
-  const x = width / 2;
-  const y = depth / 2;
-  shape.moveTo(-x + corner, -y);
-  shape.lineTo(x - corner, -y);
-  shape.lineTo(x, -y + corner);
-  shape.lineTo(x, y - corner);
-  shape.lineTo(x - corner, y);
-  shape.lineTo(-x + corner, y);
-  shape.lineTo(-x, y - corner);
-  shape.lineTo(-x, -y + corner);
-  shape.closePath();
-  return shape;
+function positionForArea(areaId) {
+  const [x, y, z] = AREA_LAYOUT[areaId].position;
+  return new THREE.Vector3(x, y, z);
 }
 
 export class SectorScene {
@@ -129,19 +168,6 @@ export class SectorScene {
     return mesh;
   }
 
-  _slab(parent, width, depth, height, y, material, key) {
-    const geometry = this._geometry(key, () => {
-      const geo = new THREE.ExtrudeGeometry(chamferedShape(width, depth), { depth: height, bevelEnabled: false });
-      geo.rotateX(-Math.PI / 2);
-      return geo;
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.y = y;
-    mesh.receiveShadow = true;
-    parent.add(mesh);
-    return mesh;
-  }
-
   _buildScene() {
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.Fog('#111a1d', 32, 90);
@@ -162,8 +188,8 @@ export class SectorScene {
     this._controlStart = () => { this.transition = null; };
     this.controls.addEventListener('start', this._controlStart);
 
-    this.scene.add(new THREE.HemisphereLight('#c4e9d6', '#1b152e', 2.3));
-    const key = new THREE.DirectionalLight('#e2f9e4', 3.2);
+    this.scene.add(new THREE.HemisphereLight('#e5b68f', '#211827', 1.9));
+    const key = new THREE.DirectionalLight('#ffd6aa', 2.8);
     key.position.set(9, 18, 8);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
@@ -171,25 +197,45 @@ export class SectorScene {
     key.shadow.bias = -0.0003;
     key.shadow.normalBias = 0.035;
     this.scene.add(key);
-    const rim = new THREE.DirectionalLight('#a997e6', 1.7);
+    const rim = new THREE.DirectionalLight('#9d77c7', 1.9);
     rim.position.set(-12, 7, -10);
     this.scene.add(rim);
 
     this.platform = new THREE.Group();
     this.scene.add(this.platform);
-    this.boardBody = this._box(this.platform, [16.5, 0.3, 10.6], [0, -0.52, 0], this._material('boardBody', '#182227', { metalness: 0.65 }));
-    this.boardTop = this._box(this.platform, [16.25, 0.07, 10.35], [0, -0.33, 0], this._material('boardTop', '#202d30'));
-    this.boardBase = this._box(this.platform, [16.1, 0.12, 10.25], [0, -0.75, 0], this._material('base', '#0c1115'));
-    this.edge = this._material('boardEdge', '#526656', { emissive: '#7da76c', emissiveIntensity: 0.16 });
-    this.boardFront = this._box(this.platform, [14.9, 0.025, 0.025], [0, -0.49, 5.31], this.edge);
-    this.boardBack = this._box(this.platform, [14.9, 0.025, 0.025], [0, -0.49, -5.31], this.edge);
+    this.boardBody = this._box(this.platform, [18.4, 0.3, 13.8], [0, -0.52, -0.4], this._material('boardBody', '#182227', { metalness: 0.65 }));
+    this.boardTop = this._box(this.platform, [18.15, 0.07, 13.55], [0, -0.33, -0.4], this._material('boardTop', '#202d30'));
+    this.boardBase = this._box(this.platform, [18, 0.12, 13.45], [0, -0.75, -0.4], this._material('base', '#0c1115'));
+    this.edge = this._material('boardEdge', '#624333', { emissive: '#c76832', emissiveIntensity: 0.22 });
+    this.boardFront = this._box(this.platform, [17.2, 0.025, 0.025], [0, -0.49, 6.52], this.edge);
+    this.boardBack = this._box(this.platform, [17.2, 0.025, 0.025], [0, -0.49, -7.32], this.edge);
+    for (const [index, region] of MAP_REGIONS.entries()) {
+      const material = this._material(`mapRegion${index}`, region.color, { roughness: 0.82, metalness: 0.08 });
+      const surface = new THREE.Mesh(
+        this._geometry(`mapRegion${index}`, () => extrudedFootprint(region.points, 0.34)),
+        material,
+      );
+      surface.position.y = -0.27;
+      surface.castShadow = true;
+      surface.receiveShadow = true;
+      surface.userData.mapArea = region.area;
+      this.platform.add(surface);
+    }
+    const wall = this._material('stageWall', '#302936', { roughness: 0.92, metalness: 0.06 });
+    const wallCap = this._material('stageWallCap', '#8a573c', { roughness: 0.72, metalness: 0.12 });
+    this._box(this.platform, [0.16, 0.48, 4.65], [-7.88, 0.31, -1.1], wall, true);
+    this._box(this.platform, [0.22, 0.06, 4.7], [-7.88, 0.58, -1.1], wallCap);
+    for (const z of [-3.38, 1.18]) {
+      this._box(this.platform, [0.68, 0.42, 0.14], [-7.53, 0.28, z], wall, true);
+      this._box(this.platform, [0.72, 0.06, 0.2], [-7.53, 0.52, z], wallCap);
+    }
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(180, 180), this._material('ground', '#111a1d', { roughness: 1, metalness: 0 }));
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = -0.9;
     floor.receiveShadow = true;
     this.scene.add(floor);
     this.groundGeometry = floor.geometry;
-    const grid = new THREE.GridHelper(120, 100, '#3e534c', '#293c36');
+    const grid = new THREE.GridHelper(120, 100, '#604734', '#382d2a');
     grid.position.y = -0.885;
     grid.material.transparent = true;
     grid.material.opacity = 0.17;
@@ -197,7 +243,7 @@ export class SectorScene {
     this.grid = grid;
 
     // A faint measuring grid reads as a tactical table, not implied corridors.
-    this.boardGrid = new THREE.GridHelper(15.5, 31, '#53635d', '#45534f');
+    this.boardGrid = new THREE.GridHelper(15.5, 31, '#735238', '#4b3b34');
     this.boardGrid.position.y = -0.282;
     this.boardGrid.material.transparent = true;
     this.boardGrid.material.opacity = 0.18;
@@ -205,7 +251,7 @@ export class SectorScene {
     this.platform.add(this.boardGrid);
     this.boardTicks = new THREE.Group();
     this.platform.add(this.boardTicks);
-    const tickMat = this._material('tick', '#7a8a7f', { emissive: '#7a8a7f', emissiveIntensity: 0.1 });
+    const tickMat = this._material('tick', '#9c7150', { emissive: '#e49352', emissiveIntensity: 0.14 });
     for (let i = -15; i <= 15; i += 1) {
       this._box(this.boardTicks, [0.018, 0.012, i % 5 === 0 ? 0.18 : 0.09], [i * 0.48, -0.279, 4.99], tickMat);
     }
@@ -219,98 +265,43 @@ export class SectorScene {
   }
 
   _createPod(room) {
+    const areaId = mapAreaForSector(room.id);
+    const layout = AREA_LAYOUT[areaId];
     const group = new THREE.Group();
-    group.position.copy(positionForSlot(room.slot));
+    group.position.copy(positionForArea(areaId));
+    group.rotation.y = layout.rotation || 0;
     this.scene.add(group);
-    const hull = this._material('hull', '#37454a');
-    const wall = this._material('wall', '#536263', { roughness: 0.84 });
-    const dark = this._material('furniture', '#24343a', { metalness: 0.5 });
-    const top = this._material('deskTop', '#6a7672');
-    const accent = this._material('accent', '#b0bc9a', { emissive: '#718766', emissiveIntensity: 0.13 });
-    const screen = this._material('screen', '#88bdad', { emissive: '#86bca9', emissiveIntensity: 0.5 });
+    const dark = this._material('furniture', '#211827', { metalness: 0.48 });
+    const top = this._material('deskTop', '#665a70');
+    const accent = this._material('accent', '#b89ad1', { emissive: '#784ba0', emissiveIntensity: 0.21 });
+    const screen = this._material('screen', '#8dd8d1', { emissive: '#60bcb6', emissiveIntensity: 0.48 });
     const light = new THREE.MeshBasicMaterial({ color: PALETTE[room.status] || PALETTE.unknown });
     const glow = new THREE.MeshBasicMaterial({ color: PALETTE[room.status] || PALETTE.unknown, transparent: true, opacity: 0.15, depthWrite: false, side: THREE.DoubleSide });
-    const slab = this._slab(group, 4.65, 3.8, 0.22, -0.22, hull, 'roomBase');
-    slab.userData.sectorId = room.id;
-    const floorMat = this._material('floor', '#334446', { metalness: 0.22 });
-    this._slab(group, 4.4, 3.55, 0.055, 0.005, floorMat, 'roomFloor');
-    const plate = this._material('floorInset', '#293a3c');
-    for (let x = -1; x <= 1; x += 1) {
-      for (let z = -1; z <= 1; z += 1) this._box(group, [1.32, 0.016, 1.02], [x * 1.38, 0.073, z * 1.08], plate);
-    }
-    // Cutaway walls leave the near edge open so evidence stays visible.
-    this._box(group, [4.37, 0.92, 0.16], [0, 0.51, -1.68], wall, true);
-    this._box(group, [0.16, 0.72, 2.3], [-2.12, 0.41, -0.45], wall, true);
-    this._box(group, [0.16, 0.35, 1.25], [2.12, 0.23, -0.97], wall, true);
-    this._box(group, [1.23, 0.22, 0.16], [-1.5, 0.17, 1.68], hull);
-    this._box(group, [0.78, 0.22, 0.16], [1.71, 0.17, 1.68], hull);
-    this._box(group, [4.38, 0.045, 0.19], [0, 0.99, -1.68], dark);
-    this._box(group, [0.2, 0.04, 2.3], [-2.12, 0.79, -0.45], dark);
-    this._box(group, [3.65, 0.025, 0.03], [0.1, 0.83, -1.58], light);
-    this._box(group, [0.03, 0.025, 1.7], [-2.015, 0.64, -0.45], accent);
-
-    // Status strips are physical details, with a subtle floor wash beneath.
-    this._box(group, [3.93, 0.026, 0.045], [0, 0.093, 1.51], light);
-    this._box(group, [0.045, 0.026, 2.93], [2.01, 0.093, 0], light);
-    this._box(group, [0.045, 0.026, 2.93], [-2.01, 0.093, 0], light);
-    const wash = new THREE.Mesh(this._geometry('wash', () => new THREE.PlaneGeometry(4.18, 3.28)), glow);
-    wash.rotation.x = -Math.PI / 2;
-    wash.position.y = 0.087;
-    group.add(wash);
-
-    // Shared instrumentation; furnishings are illustrative schematic details.
-    this._box(group, [1.1, 0.32, 0.54], [-1.21, 0.23, -1.16], dark, true);
-    this._box(group, [1.19, 0.07, 0.62], [-1.21, 0.43, -1.16], top);
-    this._box(group, [0.65, 0.31, 0.06], [-1.21, 0.63, -1.33], dark);
-    this._box(group, [0.55, 0.23, 0.015], [-1.21, 0.64, -1.291], screen);
-    this._box(group, [0.32, 0.015, 0.14], [-1.21, 0.478, -0.99], dark);
-    this._box(group, [0.4, 0.6, 0.55], [1.65, 0.38, -1.16], dark, true);
-    for (let i = 0; i < 4; i += 1) {
-      this._box(group, [0.29, 0.035, 0.013], [1.65, 0.23 + i * 0.11, -0.877], i === 2 ? light : top);
-    }
-    for (const x of [-1.94, 1.94]) {
-      this._box(group, [0.13, 0.15, 0.13], [x, 0.15, 1.43], dark);
-      this._box(group, [0.085, 0.018, 0.085], [x, 0.24, 1.43], light);
-    }
-
-    const identity = `${room.id} ${room.label}`.toLowerCase();
-    if (/coffee|cater|cafe|kitchen/.test(identity)) {
-      this._box(group, [1.65, 0.47, 0.52], [0.38, 0.32, -1.12], dark, true);
-      this._box(group, [1.75, 0.065, 0.65], [0.38, 0.59, -1.12], top);
-      this._box(group, [0.3, 0.35, 0.3], [0.68, 0.79, -1.13], dark, true);
-      this._box(group, [0.18, 0.06, 0.05], [0.68, 0.83, -0.968], light);
-      for (const [x, z] of [[-0.91, 0.5], [0.9, 0.7]]) {
-        const table = new THREE.Mesh(this._geometry('table', () => new THREE.CylinderGeometry(0.4, 0.4, 0.07, 12)), top);
-        table.position.set(x, 0.57, z);
-        table.castShadow = true;
-        group.add(table);
-        this._box(group, [0.08, 0.46, 0.08], [x, 0.32, z], dark);
-        this._box(group, [0.31, 0.28, 0.31], [x + 0.5, 0.23, z], dark, true);
+    if (areaId === 'main') {
+      this._box(group, [4.7, 0.28, 0.72], [0, 0.18, -0.32], dark, true);
+      this._box(group, [4.8, 0.045, 0.06], [0, 0.34, 0.08], light);
+      for (const x of [-1.45, 0, 1.45]) {
+        this._box(group, [1.04, 0.62, 0.07], [x, 0.86, -0.82], dark, true);
+        this._box(group, [0.92, 0.48, 0.02], [x, 0.86, -0.77], screen);
       }
-    } else if (/stage|auditor|presentation/.test(identity)) {
-      this._box(group, [1.8, 0.21, 1.07], [0.22, 0.2, -0.75], dark, true);
-      this._box(group, [1.73, 0.018, 0.03], [0.22, 0.32, -0.2], light);
-      this._box(group, [1.66, 0.72, 0.045], [0.22, 1.01, -1.42], dark);
-      this._box(group, [1.5, 0.57, 0.01], [0.22, 1.01, -1.392], screen);
-      for (const x of [-0.9, 0, 0.9]) {
-        this._box(group, [0.48, 0.23, 0.42], [x, 0.22, 0.75], dark);
-        this._box(group, [0.48, 0.31, 0.07], [x, 0.45, 0.94], top);
+      for (const z of [0.35, 0.88]) {
+        for (const x of [-1.35, -0.45, 0.45, 1.35]) {
+          this._box(group, [0.34, 0.08, 0.3], [x, 0.14, z], top);
+          this._box(group, [0.34, 0.28, 0.06], [x, 0.32, z + 0.12], dark);
+        }
       }
-    } else if (/entrance|lobby|reception/.test(identity)) {
-      this._box(group, [1.8, 0.53, 0.65], [0.1, 0.36, -0.84], dark, true);
-      this._box(group, [1.92, 0.07, 0.73], [0.1, 0.66, -0.84], top);
-      for (const x of [-0.8, 0.8]) {
-        this._box(group, [0.14, 0.72, 0.14], [x, 0.44, 0.85], dark);
-        this._box(group, [0.04, 0.065, 0.24], [x, 0.82, 0.85], light);
-      }
-      this._box(group, [0.82, 0.04, 0.38], [0, 0.09, 1.22], accent);
+    } else if (areaId === 'cafeteria') {
+      this._box(group, [2.15, 0.48, 0.62], [0, 0.29, 0.1], dark, true);
+      this._box(group, [2.25, 0.07, 0.7], [0, 0.56, 0.1], top);
+      this._box(group, [0.5, 0.58, 0.42], [0.58, 0.88, 0], dark, true);
+      this._box(group, [0.45, 0.08, 0.4], [0.58, 1.19, 0], accent);
+      this._box(group, [0.28, 0.16, 0.025], [0.58, 1.03, 0.22], screen);
+      this._box(group, [0.16, 0.18, 0.16], [-0.28, 0.7, 0.08], top);
     } else {
-      this._box(group, [1.28, 0.36, 0.89], [0.28, 0.28, 0.22], dark, true);
-      this._box(group, [1.4, 0.05, 1], [0.28, 0.49, 0.22], top);
-      this._box(group, [0.55, 0.018, 0.38], [0.28, 0.529, 0.22], screen);
-      this._box(group, [0.62, 0.37, 0.58], [-1.19, 0.27, 0.84], dark, true);
-      this._box(group, [0.55, 0.04, 0.5], [-1.19, 0.48, 0.84], top);
-      this._box(group, [0.42, 0.15, 0.42], [1.26, 0.17, 0.98], dark, true);
+      for (const z of [-1.15, -0.15, 0.85]) {
+        this._box(group, [0.38, 0.08, 0.38], [0, 0.14, z], top);
+        this._box(group, [0.38, 0.28, 0.06], [0, 0.32, z + 0.15], dark);
+      }
     }
 
     // Thin orbital beacon marks reported anomalies, not a physical entity.
@@ -327,15 +318,19 @@ export class SectorScene {
     diamond.position.y = 1.88;
     beacon.add(diamond);
     group.add(beacon);
+    const [hitWidth, hitHeight, hitDepth] = layout.hit;
     const selection = new THREE.LineLoop(
-      this._geometry('selection', () => new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(-2.42, 0.016, -1.99), new THREE.Vector3(2.42, 0.016, -1.99),
-        new THREE.Vector3(2.42, 0.016, 1.99), new THREE.Vector3(-2.42, 0.016, 1.99),
-      ])), new THREE.LineBasicMaterial({ color: '#d9f7bc', transparent: true, opacity: 0.95 }),
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-hitWidth / 2, 0.07, -hitDepth / 2),
+        new THREE.Vector3(hitWidth / 2, 0.07, -hitDepth / 2),
+        new THREE.Vector3(hitWidth / 2, 0.07, hitDepth / 2),
+        new THREE.Vector3(-hitWidth / 2, 0.07, hitDepth / 2),
+      ]),
+      new THREE.LineBasicMaterial({ color: '#ffd7ad', transparent: true, opacity: 0.95 }),
     );
     group.add(selection);
-    const hit = new THREE.Mesh(this._geometry('hit', () => new THREE.BoxGeometry(4.6, 1.3, 3.8)), new THREE.MeshBasicMaterial({ visible: false }));
-    hit.position.y = 0.58;
+    const hit = new THREE.Mesh(new THREE.BoxGeometry(hitWidth, hitHeight, hitDepth), new THREE.MeshBasicMaterial({ visible: false }));
+    hit.position.y = hitHeight / 2;
     hit.userData.sectorId = room.id;
     group.add(hit);
 
@@ -353,7 +348,8 @@ export class SectorScene {
     label.append(code, name, status);
     label.addEventListener('click', () => this._userSelect(room.id));
     this.labels.append(label);
-    return { group, light, glow, beacon, halo, diamond, selection, hit, label, name, status, room, ownedMaterials: [light, glow, selection.material, hit.material] };
+    const labelOffset = new THREE.Vector3(...(layout.labelOffset || [0, 0.23, 1.94]));
+    return { group, light, glow, beacon, halo, diamond, selection, hit, label, labelOffset, name, status, room, ownedMaterials: [light, glow, selection.material, hit.material] };
   }
 
   _bindInteractions() {
@@ -382,11 +378,14 @@ export class SectorScene {
     const next = new Map();
     entries.forEach((raw, index) => {
       const id = String(raw.id ?? raw.sector ?? `sector_${index}`);
-      const prior = this.rooms.get(id);
-      const slot = Number.isInteger(raw.slot) && raw.slot >= 0 ? raw.slot : prior?.slot ?? index;
+      const area = mapAreaForSector(id);
+      if (!area) return;
+      const slot = mapSlotForSector(id);
+      if (slot === null) return;
       next.set(id, { ...raw, id, slot, label: String(raw.label || id.replaceAll('_', ' ')), status: PALETTE[raw.status] ? raw.status : 'unknown' });
     });
     this.rooms = next;
+    if (!next.has(String(selectedId))) selectedId = null;
     for (const [id, item] of this.items) {
       if (!next.has(id)) {
         this.scene?.remove(item.group);
@@ -408,40 +407,22 @@ export class SectorScene {
         this.items.set(room.id, item);
       }
       item.room = room;
-      item.group.position.copy(positionForSlot(room.slot));
       item.light.color.set(PALETTE[room.status]);
       item.glow.color.set(PALETTE[room.status]);
       item.glow.opacity = room.status === 'breached' ? 0.18 : room.status === 'hot' ? 0.12 : 0.045;
       item.beacon.visible = room.status === 'breached' || room.status === 'hot';
-      item.name.textContent = room.label;
+      item.name.textContent = room.id;
       item.status.textContent = STATE_LABEL[room.status];
       item.label.dataset.state = room.status;
       item.label.className = `room-label is-${room.status}`;
-      item.label.title = `${room.label}: ${STATE_LABEL[room.status]}. Select sector.`;
+      item.label.title = `${room.id}: ${STATE_LABEL[room.status]}. Select sector.`;
       item.label.style.setProperty('--room-accent', PALETTE[room.status]);
       item.group.traverse((object) => {
         if (object.material && object.material === item.light) object.material.opacity = room.status === 'stale' ? 0.4 : 1;
       });
     }
-    this._resizeBoard();
     this.select(selectedId);
     this._renderFrame(performance.now());
-  }
-
-  _resizeBoard() {
-    const maxSlot = Math.max(5, ...[...this.rooms.values()].map((room) => room.slot));
-    const rows = Math.floor(maxSlot / 3) + 1;
-    const depth = rows * SLOT_Z + 1.5;
-    const centerZ = ((rows - 1) * SLOT_Z - SLOT_Z) / 2;
-    this.boardBody.scale.z = depth;
-    this.boardTop.scale.z = depth - 0.25;
-    this.boardBase.scale.z = depth - 0.35;
-    for (const board of [this.boardBody, this.boardTop, this.boardBase, this.boardGrid]) board.position.z = centerZ;
-    this.boardGrid.scale.z = (depth - 0.6) / 15.5;
-    this.boardFront.position.z = centerZ + depth / 2 + 0.01;
-    this.boardBack.position.z = centerZ - depth / 2 - 0.01;
-    this.boardTicks.position.z = centerZ + depth / 2 - 5.31;
-    this.controls.maxDistance = Math.max(65, depth * 3);
   }
 
   select(id, { focus = false } = {}) {
@@ -473,10 +454,8 @@ export class SectorScene {
       this.fallbackRoot?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
       return;
     }
-    const slots = [...this.rooms.values()].map((room) => room.slot);
-    const rows = Math.floor(Math.max(5, ...slots) / 3) + 1;
-    const center = new THREE.Vector3(0, 0, ((rows - 1) * SLOT_Z - SLOT_Z) / 2);
-    const span = Math.max(16.5, rows * SLOT_Z + 2);
+    const center = new THREE.Vector3(-0.6, 0, -0.4);
+    const span = 16.5;
     const aspect = this.camera.aspect || 1;
     const distance = Math.max(span * 1.65, 22 / Math.max(aspect, 0.6));
     const direction = this.view === 'top' ? new THREE.Vector3(0, 1, 0.015) : new THREE.Vector3(0.68, 0.93, 1.14).normalize();
@@ -559,7 +538,7 @@ export class SectorScene {
       item.diamond.position.y = 1.88 + (this.motion ? Math.sin(phase) * 0.09 : 0);
       const pulse = this.motion ? (Math.sin(phase * 1.8) + 1) / 2 : 0.35;
       item.halo.scale.setScalar(1 + pulse * 0.15);
-      this._projection.copy(item.group.position).add(new THREE.Vector3(0, 0.23, 1.94)).project(this.camera);
+      this._projection.copy(item.group.localToWorld(item.labelOffset.clone())).project(this.camera);
       const visible = this._projection.z > -1 && this._projection.z < 1 && Math.abs(this._projection.x) < 1.16 && Math.abs(this._projection.y) < 1.16;
       item.label.hidden = !visible;
       item.label.style.left = `${(this._projection.x * 0.5 + 0.5) * (this.width || 1)}px`;

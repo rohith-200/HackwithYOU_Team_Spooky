@@ -36,13 +36,13 @@
     <section class="bottom-strip" aria-label="Mission controls and metrics">
       <div class="panel run-panel"><label class="sr-only" for="scenario">Simulation scenario</label><select id="scenario"><option value="breach">01 / The coffee bar breach</option><option value="control">02 / A crowd, not a ghost</option><option value="unknown">03 / An uncharted sector</option></select><button class="run-button" id="run"><span id="run-label">RUN SIMULATION</span><span id="run-icon" aria-hidden="true">↗</span></button><p class="run-hint" id="run-hint">A local replay. No API keys required.</p></div>
       <div class="panel telemetry"><div class="metric"><span>TOKENS</span><b id="tokens">—</b><small id="metric-source">SIMULATED USAGE</small></div><div class="metric"><span>RUN COST</span><b id="cost">—</b><small>USD</small></div><div class="metric"><span>LATENCY</span><b id="latency">—</b><small>SECONDS</small></div><div class="metric"><span>AGENT BUDGET</span><b id="agents-used">— / —</b><small id="credits">— CREDITS LEFT</small></div></div>
-      <div class="panel operation-note"><span class="note-symbol">01</span><p><strong>Every sector is a live module.</strong><br>New sector IDs create new rooms. Geometry is schematic; telemetry drives the scene.</p></div>
+      <div class="panel operation-note"><span class="note-symbol">01</span><p><strong>Three areas are mapped.</strong><br>Other sector data remains in mission results without map highlights.</p></div>
     </section>
     <footer><div class="stack">TEAM STACK <span>CrewAI</span><span>Parasail</span><span>You.com</span><span>Discord</span></div><div class="footer-note"><span>HACK WITH YOU / HALLOWEEN</span><span id="renderer-label">INITIALIZING SCENE</span><button class="small-button" id="motion-toggle" aria-pressed="true">MOTION ON</button></div><span>WATCHTOWER © 2026</span></footer>
     <div class="sr-only" role="status" id="announcement"></div>
   </div>
   <script type="module">
-    import { MissionState } from '/assets/state.js';
+    import { MissionState, mapAreaForSector, mapSlotForSector } from '/assets/state.js';
     import { SectorScene } from '/assets/scene.js';
     import { getDemoPreview, getDemoSequence } from '/assets/demo.js';
     const $ = id => document.getElementById(id);
@@ -63,18 +63,18 @@
     function beep(frequency=620){if(!sound)return;try{audio??=new AudioContext();audio.resume();const o=audio.createOscillator(),g=audio.createGain();o.type='sine';o.frequency.value=frequency;g.gain.setValueAtTime(.025,audio.currentTime);g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+.12);o.connect(g).connect(audio.destination);o.start();o.stop(audio.currentTime+.13);}catch{}}
     function roleFor(value){const name=String(value??'').toLowerCase();return roles.find(([id])=>name.includes(id))?.[0]??null;}
     function render(){
-      const s=snapshot(),simulated=source==='demo'||s.isMock;
-      if(!s.rooms.some(room=>room.id===selected))selected=s.rooms.find(r=>r.status==='breached'||r.status==='hot')?.id??s.rooms[0]?.id??null;
-      scene.update(s.rooms,selected);
+      const s=snapshot(),simulated=source==='demo'||s.isMock,mapRooms=s.rooms.filter(room=>mapAreaForSector(room.id));
+      if(!mapRooms.some(room=>room.id===selected))selected=mapRooms.find(r=>r.status==='breached'||r.status==='hot')?.id??mapRooms[0]?.id??null;
+      scene.update(mapRooms,selected);
       text('facility',pretty(s.facilityId).toUpperCase());text('tick',s.tickId===null?'—':`#${s.tickId}`);
       text('source-tag',source==='demo'?'SIMULATION':s.isMock?'MOCK STREAM':'BACKEND STREAM');
       text('source-note-title',source==='demo'?'TRAINING SIMULATION':s.isMock?'MOCK BACKEND EVENTS':'BACKEND EVENT STREAM');
       text('source-note-text',source==='demo'?'Fictional replay. Scores, agent reports, and dispatches are simulated locally.':s.isMock?'Received events are marked as mock data. Results are simulated.':'Showing received backend events. The scene updates when the agent loop emits.');
-      text('board-mode',source==='demo'?'LOCAL SIMULATION':s.isMock?'MOCK STREAM':'BACKEND EVENTS');text('sector-count',`${String(s.rooms.length).padStart(2,'0')} ZONES`);
+      text('board-mode',source==='demo'?'LOCAL SIMULATION':s.isMock?'MOCK STREAM':'BACKEND EVENTS');text('sector-count',`${String(mapRooms.length).padStart(2,'0')} ZONES`);
       text('score-source',source==='live'&&backendHasMock?'INCLUDES MOCK':simulated?'SIMULATED':'RECEIVED');text('metric-source',simulated?'SIMULATED USAGE':'REPORTED USAGE');
-      const list=$('sector-list');list.replaceChildren();if(!s.rooms.length)list.append(element('div','empty','Waiting for sector data. Incoming sector IDs will create rooms automatically.'));
-      for(const room of s.rooms){const item=element('button','sector-item');item.type='button';item.setAttribute('aria-pressed',String(room.id===selected));item.style.setProperty('--room-accent',colors[room.status]);item.title=room.id;const copy=element('span','sector-copy');copy.append(element('strong','',room.label),element('small','',statuses[room.status]));item.append(element('span','sector-code',`S${String(room.slot+1).padStart(2,'0')}`),copy,element('span','sector-pip'));item.addEventListener('click',()=>{selected=room.id;scene.select(room.id,{focus:true});render();beep(440);});list.append(item);}
-      const room=s.rooms.find(r=>r.id===selected);text('intel-name',room?.label??'Select a sector');text('intel-status',statuses[room?.status]??'NO DATA');$('intel-status').style.color=colors[room?.status]??'var(--muted)';
+      const list=$('sector-list');list.replaceChildren();if(!mapRooms.length)list.append(element('div','empty','No mapped sectors received. Backend decision and score data remain available.'));
+      for(const room of mapRooms){const item=element('button','sector-item');item.type='button';item.setAttribute('aria-pressed',String(room.id===selected));item.style.setProperty('--room-accent',colors[room.status]);item.title=room.id;const copy=element('span','sector-copy');copy.append(element('strong','',room.id),element('small','',statuses[room.status]));item.append(element('span','sector-code',`S${String(mapSlotForSector(room.id)+1).padStart(2,'0')}`),copy,element('span','sector-pip'));item.addEventListener('click',()=>{selected=room.id;scene.select(room.id,{focus:true});render();beep(440);});list.append(item);}
+      const room=mapRooms.find(r=>r.id===selected);text('intel-name',room?.id??'Select a sector');text('intel-status',statuses[room?.status]??'NO DATA');$('intel-status').style.color=colors[room?.status]??'var(--muted)';
       text('emf',number(room?.emf,1));text('temp',room?.temp_c==null?'—':`${number(room.temp_c,1)}°C`);text('motion',number(room?.motion));text('confidence',room?.confidence==null?'—':`${number(room.confidence*100)}%`);
       text('entity',pretty(room?.entity_class));text('civilians',pretty(room?.civilians));text('containment',pretty(room?.containment_state));$('stale-note').hidden=room?.status!=='stale';
       text('average',number(s.totals.averageScore,2));text('scored',number(s.totals.ticksScored));text('false-alarms',number(s.totals.falseAlarms));

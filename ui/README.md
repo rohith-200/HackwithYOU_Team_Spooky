@@ -1,6 +1,6 @@
 # Watchtower command center
 
-Person C's C3 interface turns the C2 event stream into an interactive 3D incident board. The layout is a schematic, not an architectural floor plan of AWS Builder Loft. Each reported sector creates a room using its exact sector ID; unknown sectors appear automatically and keep their positions across ticks. Rooms absent from a later tick show **Not updated**, rather than being declared safe.
+Person C's C3 interface turns the C2 event stream into an interactive 3D incident board. The fixed, extruded schematic follows `pic3.jpeg`: purple `main_stage`, dark-blue `catering_coffee_bar`, teal `entrance`, and the reference-colored unknown regions. The layout is illustrative, not an architectural floor plan of AWS Builder Loft. These three mapped sectors display the exact backend IDs; other backend sectors stay in mission data, decisions, and scores but do not create map rooms or camera targets. Mapped areas absent from a later tick show **Not updated**, rather than being declared safe.
 
 ## Start on Windows
 
@@ -17,7 +17,7 @@ Open http://localhost:8000. The page starts in **Simulation** mode with a fictio
 ## Explore the board
 
 - Drag the scene to rotate and use the mouse wheel or zoom controls to move closer or farther away.
-- Select a room or its label to inspect the reported readings, civilian status, and containment state.
+- Select `main_stage`, `catering_coffee_bar`, or `entrance` on the map or in the directory to inspect the reported readings, civilian status, and containment state.
 - Use **Focus** to frame the selected sector and **Overview** to frame the whole board.
 - Switch between **Isometric** and **Top** camera views.
 - Turn motion off for a still scene; the interface also respects the system's reduced-motion preference.
@@ -32,7 +32,7 @@ The page includes agent reports, the commander's decision and rationale, evaluat
 
 - **Breach:** corroborating coffee-bar readings and four pinned civilians lead to a simulated evacuation decision.
 - **Control:** human crowd motion at the main stage leads to observation, with no research or escalation.
-- **Unknown sector:** the fictional `archive_annex` sector appears dynamically and receives a simulated containment decision.
+- **Unknown sector:** the fictional `archive_annex` stays off the map but remains in mission results and receives a simulated containment decision and score.
 
 All local replay events are tagged `_mock: true` and marked as demo data. Scores, model usage, and dispatch results are fictional. The replay runs no agents and contacts no scenario API, model API, You.com service, or Discord channel.
 
@@ -78,4 +78,4 @@ A button that starts an actual tick needs a separate integration with Person A's
 node --test tests/test_ui_state.cjs
 ```
 
-The Python checks cover event delivery and the bridge. The Node checks exercise event-state handling, exact sector IDs, dynamic rooms, stale readings, late and duplicate results, mock labels, and the separation between decisions and reported outcomes. The state tests require no npm dependencies.
+The Python checks cover event delivery and the bridge. The Node checks exercise event-state handling, exact sector IDs, mapped-area aliases, unmapped decision and score retention, stale readings, late and duplicate results, mock labels, and the separation between decisions and reported outcomes. The state tests require no npm dependencies.

@@ -45,6 +45,27 @@ test('normalized events preserve exact IDs, zero readings and explicit nulls', a
   assert.deepEqual(snapshot.metrics, { max_agents: 8, credits: 45000 });
 });
 
+test('only the three mapped sectors resolve; unknown sector judgments remain in mission state', async () => {
+  const { MissionState, mapAreaForSector, mapSlotForSector } = await modulePromise;
+  assert.equal(mapAreaForSector('main_stage'), 'main');
+  assert.equal(mapAreaForSector('catering_coffee_bar'), 'cafeteria');
+  assert.equal(mapAreaForSector('entrance'), 'entrance');
+  assert.equal(mapAreaForSector('archive_annex'), null);
+  assert.equal(mapSlotForSector('main_stage'), 0);
+  assert.equal(mapSlotForSector('catering_coffee_bar'), 1);
+  assert.equal(mapSlotForSector('entrance'), 2);
+  assert.equal(mapSlotForSector('archive_annex'), null);
+
+  const mission = new MissionState();
+  mission.ingest(start(7, [room('archive_annex', { emf: 76 })]));
+  mission.ingest({ type: 'decision', tick_id: 7, sector: 'archive_annex', action: 'observe' });
+  mission.ingest({ type: 'score', tick_id: 7, score: 0 });
+  const snapshot = mission.snapshot();
+  assert.equal(snapshot.rooms[0].id, 'archive_annex');
+  assert.equal(snapshot.decision.sector, 'archive_annex');
+  assert.equal(snapshot.score.score, 0);
+});
+
 test('raw supplied fixtures flatten without inferring a backend threat assessment', async () => {
   const mission = await state();
   const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, '../fixtures/outbreak-level-5.json'), 'utf8'));
@@ -280,8 +301,9 @@ test('all demo scenarios finish through the same reducer without changing report
   }
 });
 
-test('unknown-sector demo adds its module through real tick data and keeps all initial slots', async () => {
+test('unknown-sector demo keeps its readings and score data without mapping the sector', async () => {
   const { getDemoPreview, getDemoSequence } = await demoPromise;
+  const { mapAreaForSector } = await modulePromise;
   const mission = await state();
   mission.ingest(getDemoPreview('unknown'));
   const initialSlots = mission.snapshot().rooms.map(room => [room.id, room.slot]);
@@ -293,6 +315,11 @@ test('unknown-sector demo adds its module through real tick data and keeps all i
   assert.equal(annex.slot, 3);
   assert.equal(annex.status, 'breached');
   assert.equal(annex.emf, 76);
+  assert.equal(mapAreaForSector(annex.id), null);
+  mission.ingest({ type: 'decision', tick_id: 218, sector: annex.id, action: 'contain' });
+  mission.ingest({ type: 'score', tick_id: 218, score: 1 });
+  assert.equal(mission.snapshot().decision.sector, 'archive_annex');
+  assert.equal(mission.snapshot().score.score, 1);
 });
 
 test('local demo data and received backend data remain independent mission instances', async () => {
